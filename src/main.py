@@ -69,11 +69,16 @@ def create_account_command(args):
     ou_name = config.get("default_ou_name")
     ou_id = config.get("ou_id")
 
+    skip_ou = email_override and not ou_name and not ou_id
+
     if args.dry_run:
         print("\n--- DRY RUN ---", file=sys.stderr)
         print(f"  Account name: {account_name}", file=sys.stderr)
         print(f"  Email: {email}", file=sys.stderr)
-        print(f"  OU: {ou_name or ou_id}", file=sys.stderr)
+        if skip_ou:
+            print("  OU: skipped (custom email, no OU specified)", file=sys.stderr)
+        else:
+            print(f"  OU: {ou_name or ou_id}", file=sys.stderr)
         print(f"  Tags: {tags}", file=sys.stderr)
         if unique_number is not None:
             print(f"  SSM unique number: {unique_number} -> {unique_number + 1} (not applied)", file=sys.stderr)
@@ -112,20 +117,26 @@ def create_account_command(args):
     account_id = final_status["AccountId"]
     print(f"  Account ID: {account_id}", file=sys.stderr)
 
-    print("Phase 5: Moving account to OU...", file=sys.stderr)
-    if ou_id:
-        target_ou_id = ou_id
-        target_ou_name = ou_id
-    else:
-        ou = find_ou_by_name(org_client, ou_name)
-        if not ou:
-            print(f"ERROR: OU not found: {ou_name}", file=sys.stderr)
-            sys.exit(1)
-        target_ou_id = ou["Id"]
-        target_ou_name = ou["Name"]
+    target_ou_id = None
+    target_ou_name = None
 
-    move_account_to_ou(org_client, account_id, target_ou_id)
-    print(f"  Account moved to OU: {target_ou_name} ({target_ou_id})", file=sys.stderr)
+    if skip_ou:
+        print("Phase 5: Skipping OU placement (custom email, no OU specified)...", file=sys.stderr)
+    else:
+        print("Phase 5: Moving account to OU...", file=sys.stderr)
+        if ou_id:
+            target_ou_id = ou_id
+            target_ou_name = ou_id
+        else:
+            ou = find_ou_by_name(org_client, ou_name)
+            if not ou:
+                print(f"ERROR: OU not found: {ou_name}", file=sys.stderr)
+                sys.exit(1)
+            target_ou_id = ou["Id"]
+            target_ou_name = ou["Name"]
+
+        move_account_to_ou(org_client, account_id, target_ou_id)
+        print(f"  Account moved to OU: {target_ou_name} ({target_ou_id})", file=sys.stderr)
 
     print("Phase 6: Validating account access...", file=sys.stderr)
     validated = validate_account_access(mgmt_session, account_id, validation_role)
