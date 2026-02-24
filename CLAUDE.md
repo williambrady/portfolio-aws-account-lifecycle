@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AWS Account Lifecycle Management tool that creates new member accounts in an AWS Organization, places them in the correct OU, and validates access. Uses a separate automation account's SSM parameter to track org numbers for email generation.
+AWS Account Lifecycle Management tool that creates new member accounts in an AWS Organization, places them in the correct OU, and validates access. Uses a separate automation account's SSM parameter to track unique numbers for email generation.
 
 ## Common Commands
 
@@ -39,7 +39,7 @@ ruff format src/ tests/         # Format code
 CLI args + config.yaml
         │
         ▼
-Assume role → Automation Account → Read SSM org number
+Assume role → Automation Account → Read SSM unique number
         │
         ▼
 Generate email: will+rc-org-<number>-<name>@crofton.cloud
@@ -57,7 +57,7 @@ Find OU by name/ID → move_account to OU
 Assume OrganizationAccountAccessRole in new account → validate
         │
         ▼
-Increment SSM org number in automation account
+Increment SSM unique number in automation account
         │
         ▼
 Output JSON to stdout

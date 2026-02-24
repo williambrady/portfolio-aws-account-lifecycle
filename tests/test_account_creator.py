@@ -126,33 +126,87 @@ class TestMoveAccountToOu:
 
 class TestValidateAccountAccess:
     @patch("src.account_creator.boto3")
-    def test_successful_validation(self, mock_boto3):
-        mock_sts = MagicMock()
-        mock_boto3.client.return_value = mock_sts
-        mock_sts.assume_role.return_value = {
+    def test_successful_validation_first_attempt(self, mock_boto3):
+        mock_mgmt_session = MagicMock()
+        mock_mgmt_sts = MagicMock()
+        mock_mgmt_session.client.return_value = mock_mgmt_sts
+        mock_mgmt_sts.assume_role.return_value = {
             "Credentials": {
                 "AccessKeyId": "AKID",
                 "SecretAccessKey": "SECRET",
                 "SessionToken": "TOKEN",
             }
         }
-        mock_session = MagicMock()
-        mock_boto3.Session.return_value = mock_session
-        mock_session.client.return_value.get_caller_identity.return_value = {
+        mock_new_session = MagicMock()
+        mock_boto3.Session.return_value = mock_new_session
+        mock_new_session.client.return_value.get_caller_identity.return_value = {
             "Arn": "arn:aws:sts::123456789012:assumed-role/OrganizationAccountAccessRole/validation"
         }
 
-        result = validate_account_access("123456789012", "OrganizationAccountAccessRole")
+        result = validate_account_access(mock_mgmt_session, "123456789012", "OrganizationAccountAccessRole")
         assert result is True
+        assert mock_mgmt_sts.assume_role.call_count == 1
 
+    @patch("src.account_creator.time.sleep")
     @patch("src.account_creator.boto3")
-    def test_failed_validation(self, mock_boto3):
-        mock_sts = MagicMock()
-        mock_boto3.client.return_value = mock_sts
-        mock_sts.assume_role.side_effect = Exception("Access denied")
+    def test_successful_validation_after_retries(self, mock_boto3, mock_sleep):
+        mock_mgmt_session = MagicMock()
+        mock_mgmt_sts = MagicMock()
+        mock_mgmt_session.client.return_value = mock_mgmt_sts
+        mock_mgmt_sts.assume_role.side_effect = [
+            Exception("Access denied"),
+            Exception("Access denied"),
+            {
+                "Credentials": {
+                    "AccessKeyId": "AKID",
+                    "SecretAccessKey": "SECRET",
+                    "SessionToken": "TOKEN",
+                }
+            },
+        ]
+        mock_new_session = MagicMock()
+        mock_boto3.Session.return_value = mock_new_session
+        mock_new_session.client.return_value.get_caller_identity.return_value = {
+            "Arn": "arn:aws:sts::123456789012:assumed-role/OrganizationAccountAccessRole/validation"
+        }
 
-        result = validate_account_access("123456789012", "OrganizationAccountAccessRole")
+        result = validate_account_access(mock_mgmt_session, "123456789012", "OrganizationAccountAccessRole")
+        assert result is True
+        assert mock_mgmt_sts.assume_role.call_count == 3
+        assert mock_sleep.call_count == 2
+
+    @patch("src.account_creator.time.sleep")
+    def test_failed_validation_exhausts_retries(self, mock_sleep):
+        mock_mgmt_session = MagicMock()
+        mock_mgmt_sts = MagicMock()
+        mock_mgmt_session.client.return_value = mock_mgmt_sts
+        mock_mgmt_sts.assume_role.side_effect = Exception("Access denied")
+
+        result = validate_account_access(
+            mock_mgmt_session, "123456789012", "OrganizationAccountAccessRole", max_attempts=3, initial_delay=1
+        )
         assert result is False
+        assert mock_mgmt_sts.assume_role.call_count == 3
+        assert mock_sleep.call_count == 2
+
+    @patch("src.account_creator.time.sleep")
+    def test_exponential_backoff(self, mock_sleep):
+        mock_mgmt_session = MagicMock()
+        mock_mgmt_sts = MagicMock()
+        mock_mgmt_session.client.return_value = mock_mgmt_sts
+        mock_mgmt_sts.assume_role.side_effect = Exception("Access denied")
+
+        validate_account_access(
+            mock_mgmt_session,
+            "123456789012",
+            "OrganizationAccountAccessRole",
+            max_attempts=4,
+            initial_delay=5,
+            max_delay=30,
+        )
+        mock_sleep.assert_any_call(5)
+        mock_sleep.assert_any_call(10)
+        mock_sleep.assert_any_call(20)
 
 
 class TestBuildOutput:

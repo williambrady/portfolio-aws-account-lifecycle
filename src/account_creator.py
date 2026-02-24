@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 import boto3
 
 
-def generate_email(config, org_number, account_name):
+def generate_email(config, unique_number, account_name):
     email_config = config["email"]
     prefix = email_config["prefix"]
     domain = email_config["domain"]
-    return f"{prefix}+rc-org-{org_number}-{account_name}@{domain}"
+    return f"{prefix}+rc-org-{unique_number}-{account_name}@{domain}"
 
 
 def create_account(org_client, account_name, email, tags):
@@ -76,22 +76,36 @@ def move_account_to_ou(org_client, account_id, destination_ou_id):
     print(f"  Moved account {account_id} to OU {destination_ou_id}", file=sys.stderr)
 
 
-def validate_account_access(account_id, role_name):
+def validate_account_access(mgmt_session, account_id, role_name, max_attempts=6, initial_delay=5, max_delay=30):
     role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
-    try:
-        sts = boto3.client("sts")
-        response = sts.assume_role(RoleArn=role_arn, RoleSessionName="lifecycle-validation")
-        temp_session = boto3.Session(
-            aws_access_key_id=response["Credentials"]["AccessKeyId"],
-            aws_secret_access_key=response["Credentials"]["SecretAccessKey"],
-            aws_session_token=response["Credentials"]["SessionToken"],
-        )
-        identity = temp_session.client("sts").get_caller_identity()
-        print(f"  Validated access to account {account_id}: {identity['Arn']}", file=sys.stderr)
-        return True
-    except Exception as e:
-        print(f"  WARNING: Could not validate access to account {account_id}: {e}", file=sys.stderr)
-        return False
+    delay = initial_delay
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            sts = mgmt_session.client("sts")
+            response = sts.assume_role(RoleArn=role_arn, RoleSessionName="lifecycle-validation")
+            temp_session = boto3.Session(
+                aws_access_key_id=response["Credentials"]["AccessKeyId"],
+                aws_secret_access_key=response["Credentials"]["SecretAccessKey"],
+                aws_session_token=response["Credentials"]["SessionToken"],
+            )
+            identity = temp_session.client("sts").get_caller_identity()
+            print(f"  Validated access to account {account_id}: {identity['Arn']}", file=sys.stderr)
+            return True
+        except Exception as e:
+            if attempt < max_attempts:
+                print(
+                    f"  Validation attempt {attempt}/{max_attempts} failed, retrying in {delay}s...",
+                    file=sys.stderr,
+                )
+                time.sleep(delay)
+                delay = min(delay * 2, max_delay)
+            else:
+                print(
+                    f"  WARNING: Could not validate access to account {account_id} after {max_attempts} attempts: {e}",
+                    file=sys.stderr,
+                )
+                return False
 
 
 def build_output(account_id, account_name, email, ou_id, ou_name, validated, created_at=None):

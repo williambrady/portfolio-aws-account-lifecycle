@@ -5,7 +5,7 @@ AWS Account Lifecycle Management — creates new member accounts in an AWS Organ
 ## Features
 
 - Creates AWS accounts via Organizations API
-- Generates unique email addresses using SSM-tracked org numbers
+- Generates unique email addresses using SSM-tracked unique numbers
 - Places accounts in the correct Organizational Unit
 - Validates access via assumeRole into new accounts
 - JSON output for pipeline integration
@@ -36,7 +36,7 @@ Edit `config.yaml` to set:
 
 - **management_role_arn** — IAM role in the management account for Organizations API
 - **automation_role_arn** — IAM role in the automation account for SSM access
-- **ssm_parameter_path** — SSM parameter storing the current org number
+- **ssm_parameter_path** — SSM parameter storing the current unique number
 - **email** — Domain and prefix for generated email addresses
 - **default_ou_name** — Target OU for new accounts
 - **tags** — Default tags applied to new accounts
@@ -44,7 +44,7 @@ Edit `config.yaml` to set:
 ## Email Pattern
 
 ```
-{prefix}+rc-org-{org_number}-{account_name}@{domain}
+{prefix}+rc-org-{unique_number}-{account_name}@{domain}
 ```
 
 Example: `will+rc-org-5-my-new-account@crofton.cloud`

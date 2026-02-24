@@ -2,12 +2,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.ssm_client import assume_role, increment_org_number, read_org_number
+from src.ssm_client import get_session, increment_unique_number, read_unique_number
 
 
-class TestAssumeRole:
+class TestGetSession:
     @patch("src.ssm_client.boto3")
-    def test_assume_role_returns_session(self, mock_boto3):
+    def test_with_profile(self, mock_boto3):
+        get_session(profile_name="my-profile", region_name="us-east-1")
+        mock_boto3.Session.assert_called_once_with(profile_name="my-profile", region_name="us-east-1")
+
+    @patch("src.ssm_client.boto3")
+    def test_with_role_arn(self, mock_boto3):
         mock_sts = MagicMock()
         mock_boto3.client.return_value = mock_sts
         mock_sts.assume_role.return_value = {
@@ -18,7 +23,7 @@ class TestAssumeRole:
             }
         }
 
-        assume_role("arn:aws:iam::role/TestRole")
+        get_session(role_arn="arn:aws:iam::role/TestRole", region_name="us-east-1")
 
         mock_sts.assume_role.assert_called_once_with(
             RoleArn="arn:aws:iam::role/TestRole",
@@ -28,10 +33,11 @@ class TestAssumeRole:
             aws_access_key_id="AKID",
             aws_secret_access_key="SECRET",
             aws_session_token="TOKEN",
+            region_name="us-east-1",
         )
 
     @patch("src.ssm_client.boto3")
-    def test_assume_role_custom_session_name(self, mock_boto3):
+    def test_with_role_arn_custom_session_name(self, mock_boto3):
         mock_sts = MagicMock()
         mock_boto3.client.return_value = mock_sts
         mock_sts.assume_role.return_value = {
@@ -42,25 +48,36 @@ class TestAssumeRole:
             }
         }
 
-        assume_role("arn:aws:iam::role/TestRole", "custom-session")
+        get_session(role_arn="arn:aws:iam::role/TestRole", session_name="custom")
 
         mock_sts.assume_role.assert_called_once_with(
             RoleArn="arn:aws:iam::role/TestRole",
-            RoleSessionName="custom-session",
+            RoleSessionName="custom",
         )
 
+    @patch("src.ssm_client.boto3")
+    def test_profile_takes_precedence_over_role(self, mock_boto3):
+        get_session(profile_name="my-profile", role_arn="arn:aws:iam::role/TestRole")
+        mock_boto3.Session.assert_called_once_with(profile_name="my-profile", region_name=None)
+        mock_boto3.client.assert_not_called()
 
-class TestReadOrgNumber:
+    @patch("src.ssm_client.boto3")
+    def test_default_session(self, mock_boto3):
+        get_session()
+        mock_boto3.Session.assert_called_once_with(region_name=None)
+
+
+class TestReadUniqueNumber:
     def test_read_existing_parameter(self):
         mock_session = MagicMock()
         mock_ssm = MagicMock()
         mock_session.client.return_value = mock_ssm
         mock_ssm.get_parameter.return_value = {"Parameter": {"Value": "42"}}
 
-        result = read_org_number(mock_session, "/test/org-number")
+        result = read_unique_number(mock_session, "/test/unique-number")
 
         assert result == 42
-        mock_ssm.get_parameter.assert_called_once_with(Name="/test/org-number")
+        mock_ssm.get_parameter.assert_called_once_with(Name="/test/unique-number")
 
     def test_parameter_not_found(self):
         mock_session = MagicMock()
@@ -72,7 +89,7 @@ class TestReadOrgNumber:
         mock_ssm.get_parameter.side_effect = error()
 
         with pytest.raises(SystemExit):
-            read_org_number(mock_session, "/test/missing")
+            read_unique_number(mock_session, "/test/missing")
 
     def test_invalid_integer_value(self):
         mock_session = MagicMock()
@@ -84,20 +101,20 @@ class TestReadOrgNumber:
         mock_ssm.exceptions.ParameterNotFound = error
 
         with pytest.raises(SystemExit):
-            read_org_number(mock_session, "/test/bad-value")
+            read_unique_number(mock_session, "/test/bad-value")
 
 
-class TestIncrementOrgNumber:
+class TestIncrementUniqueNumber:
     def test_increment_value(self):
         mock_session = MagicMock()
         mock_ssm = MagicMock()
         mock_session.client.return_value = mock_ssm
 
-        result = increment_org_number(mock_session, "/test/org-number", 42)
+        result = increment_unique_number(mock_session, "/test/unique-number", 42)
 
         assert result == 43
         mock_ssm.put_parameter.assert_called_once_with(
-            Name="/test/org-number",
+            Name="/test/unique-number",
             Value="43",
             Type="String",
             Overwrite=True,

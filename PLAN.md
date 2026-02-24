@@ -2,7 +2,7 @@
 
 ## Context
 
-This is a template project being converted into an AWS account lifecycle management tool. It creates new member accounts in an AWS Organization, places them in the correct OU, and validates access. It uses a separate automation account's SSM parameter to track org numbers for email generation. The project follows Docker-based patterns established by sibling projects (`portfolio-aws-org-baseline`, `portfolio-aws-account-baseline`).
+This is a template project being converted into an AWS account lifecycle management tool. It creates new member accounts in an AWS Organization, places them in the correct OU, and validates access. It uses a separate automation account's SSM parameter to track unique numbers for email generation. The project follows Docker-based patterns established by sibling projects (`portfolio-aws-org-baseline`, `portfolio-aws-account-baseline`).
 
 ---
 
@@ -11,7 +11,7 @@ This is a template project being converted into an AWS account lifecycle managem
 ### Python Source (`src/`)
 1. **`src/__init__.py`** — empty package marker
 2. **`src/config.py`** — Load `config.yaml`, merge CLI overrides, validate required fields
-3. **`src/ssm_client.py`** — Assume role into automation account, read/increment SSM org number
+3. **`src/ssm_client.py`** — Assume role into automation account, read/increment SSM unique number
 4. **`src/account_creator.py`** — Core logic: create account, poll status, find OU, move account, validate access via assumeRole, generate email, build JSON output
 5. **`src/main.py`** — CLI entrypoint with argparse subcommand `create-account`. Orchestrates: SSM read → email gen → create account → move to OU → validate → SSM increment → JSON output
 
@@ -60,7 +60,7 @@ This is a template project being converted into an AWS account lifecycle managem
 CLI args + config.yaml
         │
         ▼
-Assume role → Automation Account → Read SSM org number
+Assume role → Automation Account → Read SSM unique number
         │
         ▼
 Generate email: will+rc-org-<number>-<name>@crofton.cloud
@@ -78,7 +78,7 @@ Find OU by name/ID → move_account to OU
 Assume OrganizationAccountAccessRole in new account → sts.get_caller_identity
         │
         ▼
-Increment SSM org number in automation account
+Increment SSM unique number in automation account
         │
         ▼
 Output JSON: {account_id, name, email, timestamps, status, ou_id, ou_name}

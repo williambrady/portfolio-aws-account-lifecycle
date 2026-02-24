@@ -3,7 +3,22 @@
 IMAGE_NAME := portfolio-aws-account-lifecycle
 IMAGE_TAG := dev
 
-DOCKER_ENV := -e AWS_PROFILE=$(AWS_PROFILE)
+DOCKER_ENV :=
+ifdef MGMT_PROFILE
+DOCKER_ENV += -e MGMT_PROFILE=$(MGMT_PROFILE)
+endif
+ifdef AUTOMATION_PROFILE
+DOCKER_ENV += -e AUTOMATION_PROFILE=$(AUTOMATION_PROFILE)
+endif
+
+# Build CLI args for profile passthrough
+CLI_ARGS :=
+ifdef MGMT_PROFILE
+CLI_ARGS += --mgmt-profile $(MGMT_PROFILE)
+endif
+ifdef AUTOMATION_PROFILE
+CLI_ARGS += --automation-profile $(AUTOMATION_PROFILE)
+endif
 
 # Default target
 help:
@@ -15,8 +30,9 @@ help:
 	@echo "  clean          - Remove Docker image"
 	@echo ""
 	@echo "Environment variables:"
-	@echo "  AWS_PROFILE    - AWS profile to use (required)"
-	@echo "  ACCOUNT_NAME   - Name for the new account (required for create-account/dry-run)"
+	@echo "  MGMT_PROFILE       - AWS profile for management account (required)"
+	@echo "  AUTOMATION_PROFILE - AWS profile for automation account (required)"
+	@echo "  ACCOUNT_NAME       - Name for the new account (required for create-account/dry-run)"
 
 # Build the Docker image
 build:
@@ -30,7 +46,7 @@ endif
 	docker run --rm \
 		-v "$(HOME)/.aws:/home/lifecycle/.aws:ro" \
 		$(DOCKER_ENV) \
-		$(IMAGE_NAME):$(IMAGE_TAG) create-account $(ACCOUNT_NAME)
+		$(IMAGE_NAME):$(IMAGE_TAG) create-account $(ACCOUNT_NAME) $(CLI_ARGS)
 
 # Dry run - show plan without making changes
 dry-run: build
@@ -40,7 +56,7 @@ endif
 	docker run --rm \
 		-v "$(HOME)/.aws:/home/lifecycle/.aws:ro" \
 		$(DOCKER_ENV) \
-		$(IMAGE_NAME):$(IMAGE_TAG) create-account $(ACCOUNT_NAME) --dry-run
+		$(IMAGE_NAME):$(IMAGE_TAG) create-account $(ACCOUNT_NAME) --dry-run $(CLI_ARGS)
 
 # Open interactive shell in container
 shell: build
