@@ -2,6 +2,13 @@ import argparse
 import json
 import sys
 
+from src.account_closer import (
+    build_closure_output,
+    close_account,
+    find_account_by_email,
+    list_member_accounts,
+    poll_account_closure,
+)
 from src.account_creator import (
     build_output,
     create_account,
@@ -141,6 +148,190 @@ def create_account_command(args):
     print("\nAccount creation complete!", file=sys.stderr)
 
 
+def _get_mgmt_org_client(args):
+    config = load_config(args.config)
+    cli_overrides = {
+        "management_role_arn": args.management_role_arn,
+        "mgmt_profile": args.mgmt_profile,
+    }
+    for key, value in cli_overrides.items():
+        if value:
+            config[key] = value
+
+    has_mgmt_access = config.get("mgmt_profile") or config.get("management_role_arn")
+    if not has_mgmt_access:
+        print("ERROR: Must provide either mgmt_profile or management_role_arn", file=sys.stderr)
+        sys.exit(1)
+
+    region = config.get("region")
+    mgmt_session = get_session(
+        profile_name=config.get("mgmt_profile"),
+        role_arn=config.get("management_role_arn"),
+        region_name=region,
+        session_name="lifecycle-close-account",
+    )
+    return mgmt_session.client("organizations"), config
+
+
+def close_account_command(args):
+    print("Phase 1: Getting management account session...", file=sys.stderr)
+    org_client, config = _get_mgmt_org_client(args)
+
+    polling_config = config.get("polling", {})
+    max_attempts = polling_config.get("max_attempts", 60)
+    interval = polling_config.get("interval_seconds", 5)
+
+    if args.all:
+        _close_all_accounts(org_client, args, max_attempts, interval)
+    else:
+        _close_single_account(org_client, args, max_attempts, interval)
+
+
+def _close_single_account(org_client, args, max_attempts, interval):
+    if args.email:
+        print(f"Phase 2: Looking up account by email: {args.email}", file=sys.stderr)
+        account = find_account_by_email(org_client, args.email)
+        if not account:
+            print(f"ERROR: No account found with email: {args.email}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        print(f"Phase 2: Looking up account: {args.account_id}", file=sys.stderr)
+        try:
+            response = org_client.describe_account(AccountId=args.account_id)
+            account = response["Account"]
+        except Exception as e:
+            print(f"ERROR: Could not describe account {args.account_id}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    account_id = account["Id"]
+    account_name = account.get("Name", "")
+    email = account.get("Email", "")
+    status = account.get("Status", "UNKNOWN")
+
+    print(f"  Account: {account_name} ({account_id})", file=sys.stderr)
+    print(f"  Email: {email}", file=sys.stderr)
+    print(f"  Status: {status}", file=sys.stderr)
+
+    if status != "ACTIVE":
+        print(f"  Account is already {status}, skipping closure", file=sys.stderr)
+        output = build_closure_output(account_id, account_name, email, status)
+        print(json.dumps(output, indent=2))
+        return
+
+    if args.dry_run:
+        print("\n--- DRY RUN ---", file=sys.stderr)
+        print(f"  Would close account: {account_name} ({account_id})", file=sys.stderr)
+        print("  No changes will be made.", file=sys.stderr)
+        output = {"dry_run": True, "account_id": account_id, "account_name": account_name, "email": email}
+        print(json.dumps(output, indent=2))
+        return
+
+    print(f"Phase 3: Closing account {account_id}...", file=sys.stderr)
+    close_account(org_client, account_id)
+
+    if args.no_wait:
+        print("  --no-wait specified, skipping polling", file=sys.stderr)
+        final_status = "CLOSE_REQUESTED"
+    else:
+        print("Phase 4: Polling account closure status...", file=sys.stderr)
+        final_status = poll_account_closure(org_client, account_id, max_attempts, interval)
+
+    output = build_closure_output(account_id, account_name, email, final_status)
+    print(json.dumps(output, indent=2))
+    print("\nAccount closure complete!", file=sys.stderr)
+
+
+def _close_all_accounts(org_client, args, max_attempts, interval):
+    print("Phase 2: Listing all member accounts...", file=sys.stderr)
+    all_accounts = list_member_accounts(org_client)
+    active_accounts = [a for a in all_accounts if a.get("Status") == "ACTIVE"]
+    skipped_accounts = [a for a in all_accounts if a.get("Status") != "ACTIVE"]
+
+    print(f"  Total member accounts: {len(all_accounts)}", file=sys.stderr)
+    print(f"  Active (to close): {len(active_accounts)}", file=sys.stderr)
+    print(f"  Already closed/suspended: {len(skipped_accounts)}", file=sys.stderr)
+
+    if not active_accounts:
+        print("  No active member accounts to close.", file=sys.stderr)
+        output = {
+            "closed": [],
+            "failed": [],
+            "skipped": [
+                {"account_id": a["Id"], "account_name": a.get("Name", ""), "status": a.get("Status")}
+                for a in skipped_accounts
+            ],
+            "total": len(all_accounts),
+            "closed_count": 0,
+            "failed_count": 0,
+            "skipped_count": len(skipped_accounts),
+        }
+        print(json.dumps(output, indent=2))
+        return
+
+    print("\n  Accounts to close:", file=sys.stderr)
+    for account in active_accounts:
+        print(f"    - {account.get('Name', '')} ({account['Id']}) [{account.get('Email', '')}]", file=sys.stderr)
+
+    if args.dry_run:
+        print("\n--- DRY RUN ---", file=sys.stderr)
+        print("  No changes will be made.", file=sys.stderr)
+        output = {
+            "dry_run": True,
+            "accounts_to_close": [
+                {"account_id": a["Id"], "account_name": a.get("Name", ""), "email": a.get("Email", "")}
+                for a in active_accounts
+            ],
+            "count": len(active_accounts),
+        }
+        print(json.dumps(output, indent=2))
+        return
+
+    print(f"\n  WARNING: This will close {len(active_accounts)} account(s).", file=sys.stderr)
+    print('  Type "yes" to confirm: ', end="", file=sys.stderr, flush=True)
+    confirmation = input()
+    if confirmation != "yes":
+        print("  Aborted.", file=sys.stderr)
+        sys.exit(1)
+
+    closed = []
+    failed = []
+    skipped = [
+        {"account_id": a["Id"], "account_name": a.get("Name", ""), "status": a.get("Status")} for a in skipped_accounts
+    ]
+
+    for i, account in enumerate(active_accounts, 1):
+        account_id = account["Id"]
+        account_name = account.get("Name", "")
+        print(f"\n  [{i}/{len(active_accounts)}] Closing {account_name} ({account_id})...", file=sys.stderr)
+
+        try:
+            close_account(org_client, account_id)
+            if args.no_wait:
+                final_status = "CLOSE_REQUESTED"
+            else:
+                final_status = poll_account_closure(org_client, account_id, max_attempts, interval)
+            closed.append({"account_id": account_id, "account_name": account_name, "status": final_status})
+        except Exception as e:
+            print(f"  ERROR closing {account_id}: {e}", file=sys.stderr)
+            failed.append({"account_id": account_id, "account_name": account_name, "error": str(e)})
+
+    output = {
+        "closed": closed,
+        "failed": failed,
+        "skipped": skipped,
+        "total": len(all_accounts),
+        "closed_count": len(closed),
+        "failed_count": len(failed),
+        "skipped_count": len(skipped),
+    }
+    print(json.dumps(output, indent=2))
+
+    if failed:
+        print(f"\nWARNING: {len(failed)} account(s) failed to close.", file=sys.stderr)
+    else:
+        print(f"\nAll {len(closed)} account(s) closed successfully!", file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="AWS Account Lifecycle Management",
@@ -159,6 +350,17 @@ def main():
     create_parser.add_argument("--ou-id", help="Target OU ID (bypasses name lookup)")
     create_parser.add_argument("--dry-run", action="store_true", help="Show plan without making changes")
 
+    close_parser = subparsers.add_parser("close-account", help="Close an AWS member account")
+    close_target = close_parser.add_mutually_exclusive_group(required=True)
+    close_target.add_argument("--account-id", help="Account ID to close")
+    close_target.add_argument("--email", help="Close account matching this email address")
+    close_target.add_argument("--all", action="store_true", help="Close ALL member accounts")
+    close_parser.add_argument("--config", default="config.yaml", help="Path to config file")
+    close_parser.add_argument("--mgmt-profile", help="AWS profile for management account")
+    close_parser.add_argument("--management-role-arn", help="Role ARN for management account (alternative to profile)")
+    close_parser.add_argument("--dry-run", action="store_true", help="Show what would be closed without closing")
+    close_parser.add_argument("--no-wait", action="store_true", help="Return after close_account without polling")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -167,6 +369,8 @@ def main():
 
     if args.command == "create-account":
         create_account_command(args)
+    elif args.command == "close-account":
+        close_account_command(args)
 
 
 if __name__ == "__main__":

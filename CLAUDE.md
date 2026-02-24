@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AWS Account Lifecycle Management tool that creates new member accounts in an AWS Organization, places them in the correct OU, and validates access. Uses a separate automation account's SSM parameter to track unique numbers for email generation.
+AWS Account Lifecycle Management tool that creates new member accounts in an AWS Organization, places them in the correct OU, validates access, and closes accounts when no longer needed. Uses a separate automation account's SSM parameter to track unique numbers for email generation.
 
 ## Common Commands
 
@@ -14,6 +14,10 @@ make help                                              # Show available targets
 make build                                             # Build Docker image
 make create-account ACCOUNT_NAME=my-account AWS_PROFILE=mgmt  # Create account
 make dry-run ACCOUNT_NAME=my-account AWS_PROFILE=mgmt  # Show plan without changes
+make close-account ACCOUNT_ID=123456789012 MGMT_PROFILE=mgmt  # Dry-run close (default)
+make close-account ACCOUNT_ID=123456789012 MGMT_PROFILE=mgmt APPROVE=true  # Actually close
+make close-all-accounts MGMT_PROFILE=mgmt              # Dry-run close all (default)
+make close-all-accounts MGMT_PROFILE=mgmt APPROVE=true # Actually close all
 make shell AWS_PROFILE=mgmt                            # Open interactive shell
 make clean                                             # Remove Docker image
 ```
@@ -63,12 +67,41 @@ Increment SSM unique number in automation account
 Output JSON to stdout
 ```
 
+### Account Closure Flow
+
+```
+CLI args + config.yaml
+        │
+        ▼
+Assume role → Management Account → organizations
+        │
+        ├─ --account-id → describe_account()
+        ├─ --email → list_accounts() + match email
+        └─ --all → list_accounts() + exclude management account
+        │
+        ▼
+Validate account is ACTIVE (skip if already closed/suspended)
+        │
+        ▼
+[dry-run exits here]
+        │
+        ▼
+organizations.close_account()
+        │
+        ▼
+Poll describe_account() until status != ACTIVE (unless --no-wait)
+        │
+        ▼
+Output JSON to stdout
+```
+
 ### Key Components
 
 - `src/main.py` — CLI entrypoint with argparse subcommands
 - `src/config.py` — Config loading, merging, validation
 - `src/ssm_client.py` — SSM parameter read/increment via cross-account role assumption
 - `src/account_creator.py` — Account creation, OU placement, validation
+- `src/account_closer.py` — Account closure, email lookup, bulk close
 - `config.yaml` — Configuration file with role ARNs, email settings, tags
 - `Dockerfile` — Python 3.11-slim with AWS CLI, non-root user
 - `entrypoint.sh` — Credential validation and Python module execution
@@ -78,8 +111,11 @@ Output JSON to stdout
 - Stderr for progress messages, stdout for JSON output (enables piping)
 - SSM increment is last — only after account creation + OU move succeed
 - Validation failure is a warning — new accounts may have brief assumeRole delays
-- Subcommand pattern (`create-account`) — extensible for future commands
+- Subcommand pattern (`create-account`, `close-account`) — extensible for future commands
 - `--dry-run` shows plan without making changes beyond SSM read
+- Close targets are dry-run by default via Makefile (`APPROVE=true` required to execute)
+- `--all` requires interactive "yes" confirmation as a second safety layer
+- `AccountAlreadyClosedException` handled idempotently
 - Recursive OU search by name, with `--ou-id` escape hatch
 
 ## Important Notes
