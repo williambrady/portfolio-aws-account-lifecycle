@@ -107,14 +107,13 @@ def create_account_command(args):
         output = {
             "dry_run": True,
             "management_account": mgmt_identity,
+            "automation_account": automation_identity,
             "account_name": account_name,
             "email": email,
             "ou_name": ou_name,
             "ou_id": ou_id,
             "tags": tags,
         }
-        if automation_identity:
-            output["automation_account"] = automation_identity
         if unique_number is not None:
             output["unique_number"] = unique_number
             output["next_unique_number"] = unique_number + 1
@@ -172,8 +171,7 @@ def create_account_command(args):
 
     output = build_output(account_id, account_name, email, target_ou_id, target_ou_name, validated)
     output["management_account"] = mgmt_identity
-    if automation_identity:
-        output["automation_account"] = automation_identity
+    output["automation_account"] = automation_identity
     print(json.dumps(output, indent=2))
     print("\nAccount creation complete!", file=sys.stderr)
 

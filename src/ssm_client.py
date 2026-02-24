@@ -26,7 +26,7 @@ def get_session(profile_name=None, role_arn=None, region_name=None, session_name
 
 
 def get_caller_identity(session):
-    """Return the account ID, ARN, and alias for a boto3 session."""
+    """Return the account ID and ARN for a boto3 session."""
     sts = session.client("sts")
     identity = sts.get_caller_identity()
     return {
