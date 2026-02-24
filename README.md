@@ -25,18 +25,18 @@ AWS Account Lifecycle Management — creates new member accounts in an AWS Organ
 make build
 
 # Preview what will happen (no changes made)
-make dry-run ACCOUNT_NAME=my-new-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation
+make dry-run ACCOUNT_NAME=my-new-account
 
 # Create a new account
-make create-account ACCOUNT_NAME=my-new-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation
+make create-account ACCOUNT_NAME=my-new-account
 ```
 
 ## Configuration
 
 Edit `config.yaml` to set:
 
-- **management_role_arn** — IAM role in the management account for Organizations API
-- **automation_role_arn** — IAM role in the automation account for SSM access
+- **mgmt_profile** / **management_role_arn** — AWS profile or IAM role for the management account
+- **automation_profile** / **automation_role_arn** — AWS profile or IAM role for the automation account
 - **ssm_parameter_path** — SSM parameter storing the current unique number
 - **email** — Domain and prefix for generated email addresses
 - **default_ou_name** — Target OU for new accounts
@@ -45,10 +45,10 @@ Edit `config.yaml` to set:
 ## Email Pattern
 
 ```
-{prefix}+rc-org-{unique_number}-{account_name}@{domain}
+{prefix}+{unique_number}-{account_name}@{domain}
 ```
 
-Example: `will+rc-org-5-my-new-account@crofton.cloud`
+Example: `will+5-my-new-account@crofton.cloud`
 
 ## Closing Accounts
 
@@ -68,7 +68,7 @@ make close-all-accounts MGMT_PROFILE=mgmt
 make close-all-accounts MGMT_PROFILE=mgmt APPROVE=true
 
 # Close by email (CLI, no dry-run default)
-python -m src.main close-account --email "will+rc-org-50-testing@crofton.cloud" --mgmt-profile mgmt
+python -m src.main close-account --email "will+50-testing@crofton.cloud" --mgmt-profile mgmt
 ```
 
 ## AWS Constraints
@@ -114,7 +114,7 @@ python -m src.main close-account --email "will+rc-org-50-testing@crofton.cloud" 
 ... close-account --account-id 123456789012
 
 # Close by email
-... close-account --email "will+rc-org-50-testing@crofton.cloud"
+... close-account --email "will+50-testing@crofton.cloud"
 
 # Close all member accounts (interactive confirmation required)
 ... close-account --all

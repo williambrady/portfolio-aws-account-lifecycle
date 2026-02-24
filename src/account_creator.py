@@ -23,7 +23,7 @@ def generate_email(config, unique_number, account_name):
     prefix = email_config["prefix"]
     domain = email_config["domain"]
     safe_name = sanitize_account_name(account_name)
-    return f"{prefix}+rc-org-{unique_number}-{safe_name}@{domain}"
+    return f"{prefix}+{unique_number}-{safe_name}@{domain}"
 
 
 def create_account(org_client, account_name, email, tags):

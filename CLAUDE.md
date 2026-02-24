@@ -12,8 +12,8 @@ AWS Account Lifecycle Management tool that creates new member accounts in an AWS
 ```bash
 make help                                              # Show available targets
 make build                                             # Build Docker image
-make create-account ACCOUNT_NAME=my-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation  # Create account
-make dry-run ACCOUNT_NAME=my-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation  # Show plan without changes
+make create-account ACCOUNT_NAME=my-account             # Create account (profiles from config.yaml)
+make dry-run ACCOUNT_NAME=my-account                    # Show plan without changes
 make close-account ACCOUNT_ID=123456789012 MGMT_PROFILE=mgmt  # Dry-run close (default)
 make close-account ACCOUNT_ID=123456789012 MGMT_PROFILE=mgmt APPROVE=true  # Actually close
 make close-all-accounts MGMT_PROFILE=mgmt              # Dry-run close all (default)
@@ -46,7 +46,7 @@ CLI args + config.yaml
 Assume role → Automation Account → Read SSM unique number
         │
         ▼
-Generate email: will+rc-org-<number>-<name>@crofton.cloud
+Generate email: {prefix}+<number>-<name>@{domain}
         │
         ▼
 Assume role → Management Account → organizations.create_account()

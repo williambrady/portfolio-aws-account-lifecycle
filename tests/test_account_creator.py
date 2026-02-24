@@ -56,19 +56,19 @@ class TestGenerateEmail:
         """Verify that a standard email is generated with the correct format."""
         config = {"email": {"prefix": "will", "domain": "crofton.cloud"}}
         result = generate_email(config, 5, "my-account")
-        assert result == "will+rc-org-5-my-account@crofton.cloud"
+        assert result == "will+5-my-account@crofton.cloud"
 
     def test_different_prefix_and_domain(self):
         """Verify that custom prefix and domain values are used correctly."""
         config = {"email": {"prefix": "admin", "domain": "example.com"}}
         result = generate_email(config, 100, "prod")
-        assert result == "admin+rc-org-100-prod@example.com"
+        assert result == "admin+100-prod@example.com"
 
     def test_sanitizes_account_name(self):
         """Verify that the account name is sanitized before embedding in the email."""
         config = {"email": {"prefix": "will", "domain": "crofton.cloud"}}
         result = generate_email(config, 5, "My Account!")
-        assert result == "will+rc-org-5-my-account@crofton.cloud"
+        assert result == "will+5-my-account@crofton.cloud"
 
 
 class TestCreateAccount:

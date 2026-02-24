@@ -63,7 +63,7 @@ CLI args + config.yaml
 Assume role → Automation Account → Read SSM unique number
         │
         ▼
-Generate email: will+rc-org-<number>-<name>@crofton.cloud
+Generate email: {prefix}+<number>-<name>@{domain}
         │
         ▼
 Assume role → Management Account → organizations.create_account()
