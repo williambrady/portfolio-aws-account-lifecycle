@@ -50,6 +50,7 @@ class TestGetSession:
 
         get_session(role_arn="arn:aws:iam::role/TestRole", session_name="custom")
 
+        mock_boto3.client.assert_called_once_with("sts", region_name="us-east-1")
         mock_sts.assume_role.assert_called_once_with(
             RoleArn="arn:aws:iam::role/TestRole",
             RoleSessionName="custom",
@@ -58,13 +59,18 @@ class TestGetSession:
     @patch("src.ssm_client.boto3")
     def test_profile_takes_precedence_over_role(self, mock_boto3):
         get_session(profile_name="my-profile", role_arn="arn:aws:iam::role/TestRole")
-        mock_boto3.Session.assert_called_once_with(profile_name="my-profile", region_name=None)
+        mock_boto3.Session.assert_called_once_with(profile_name="my-profile", region_name="us-east-1")
         mock_boto3.client.assert_not_called()
 
     @patch("src.ssm_client.boto3")
-    def test_default_session(self, mock_boto3):
+    def test_default_session_uses_default_region(self, mock_boto3):
         get_session()
-        mock_boto3.Session.assert_called_once_with(region_name=None)
+        mock_boto3.Session.assert_called_once_with(region_name="us-east-1")
+
+    @patch("src.ssm_client.boto3")
+    def test_explicit_region_overrides_default(self, mock_boto3):
+        get_session(region_name="eu-west-1")
+        mock_boto3.Session.assert_called_once_with(region_name="eu-west-1")
 
 
 class TestReadUniqueNumber:

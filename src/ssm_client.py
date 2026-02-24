@@ -2,8 +2,11 @@ import sys
 
 import boto3
 
+DEFAULT_REGION = "us-east-1"
+
 
 def get_session(profile_name=None, role_arn=None, region_name=None, session_name="account-lifecycle"):
+    region_name = region_name or DEFAULT_REGION
     if profile_name:
         return boto3.Session(profile_name=profile_name, region_name=region_name)
     if role_arn:
