@@ -25,6 +25,16 @@ def get_session(profile_name=None, role_arn=None, region_name=None, session_name
     return boto3.Session(region_name=region_name)
 
 
+def get_caller_identity(session):
+    """Return the account ID, ARN, and alias for a boto3 session."""
+    sts = session.client("sts")
+    identity = sts.get_caller_identity()
+    return {
+        "account_id": identity["Account"],
+        "arn": identity["Arn"],
+    }
+
+
 def read_unique_number(session, parameter_path):
     """Read an integer unique number from an SSM parameter."""
     ssm = session.client("ssm")
