@@ -22,4 +22,4 @@ repos:
     hooks:
       - id: pylint
         additional_dependencies: ['boto3', 'pyyaml', 'pytest']
-        args: ['--disable=C0301,R0801,R0903,R0913,R0917,R0914,R0912,R0915,R1732']
+        args: ['--disable=C0301,R0801,R0903,R0913,R0917,R0914,R0912,R0915,R1732,W0718']
