@@ -1,3 +1,5 @@
+"""CLI entrypoint for AWS Account Lifecycle Management."""
+
 import argparse
 import json
 import sys
@@ -23,6 +25,7 @@ from src.ssm_client import get_session, increment_unique_number, read_unique_num
 
 
 def create_account_command(args):
+    """Execute the create-account workflow."""
     config = load_config(args.config)
     cli_overrides = {
         "management_role_arn": args.management_role_arn,
@@ -160,6 +163,7 @@ def create_account_command(args):
 
 
 def _get_mgmt_org_client(args):
+    """Build an Organizations client from management account credentials."""
     config = load_config(args.config)
     cli_overrides = {
         "management_role_arn": args.management_role_arn,
@@ -185,6 +189,7 @@ def _get_mgmt_org_client(args):
 
 
 def close_account_command(args):
+    """Execute the close-account workflow."""
     print("Phase 1: Getting management account session...", file=sys.stderr)
     org_client, config = _get_mgmt_org_client(args)
 
@@ -199,6 +204,7 @@ def close_account_command(args):
 
 
 def _close_single_account(org_client, args, max_attempts, interval):
+    """Close a single account identified by account ID or email."""
     if args.email:
         print(f"Phase 2: Looking up account by email: {args.email}", file=sys.stderr)
         account = find_account_by_email(org_client, args.email)
@@ -257,6 +263,7 @@ def _close_single_account(org_client, args, max_attempts, interval):
 
 
 def _close_all_accounts(org_client, args, max_attempts, interval):
+    """Close all active member accounts with interactive confirmation."""
     print("Phase 2: Listing all member accounts...", file=sys.stderr)
     all_accounts = list_member_accounts(org_client)
     active_accounts = [a for a in all_accounts if a.get("Status") == "ACTIVE"]
@@ -348,6 +355,7 @@ def _close_all_accounts(org_client, args, max_attempts, interval):
 
 
 def main():
+    """Parse CLI arguments and dispatch to the appropriate subcommand."""
     parser = argparse.ArgumentParser(
         description="AWS Account Lifecycle Management",
     )

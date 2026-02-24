@@ -1,3 +1,5 @@
+"""Account creation, OU placement, and validation for AWS Organizations."""
+
 import re
 import sys
 import time
@@ -7,6 +9,7 @@ import boto3
 
 
 def sanitize_account_name(name):
+    """Normalize an account name for use in email addresses."""
     sanitized = name.lower().strip()
     sanitized = re.sub(r"[^a-z0-9-]", "-", sanitized)
     sanitized = re.sub(r"-+", "-", sanitized)
@@ -15,6 +18,7 @@ def sanitize_account_name(name):
 
 
 def generate_email(config, unique_number, account_name):
+    """Generate a unique email address for a new AWS account."""
     email_config = config["email"]
     prefix = email_config["prefix"]
     domain = email_config["domain"]
@@ -23,6 +27,7 @@ def generate_email(config, unique_number, account_name):
 
 
 def create_account(org_client, account_name, email, tags):
+    """Create a new AWS account in the organization."""
     tag_list = [{"Key": k, "Value": v} for k, v in tags.items()]
     response = org_client.create_account(
         Email=email,
@@ -33,6 +38,7 @@ def create_account(org_client, account_name, email, tags):
 
 
 def poll_account_creation(org_client, request_id, max_attempts=60, interval=5):
+    """Poll account creation status until it succeeds, fails, or times out."""
     for attempt in range(max_attempts):
         response = org_client.describe_create_account_status(CreateAccountRequestId=request_id)
         status = response["CreateAccountStatus"]
@@ -42,7 +48,7 @@ def poll_account_creation(org_client, request_id, max_attempts=60, interval=5):
 
         if state == "SUCCEEDED":
             return status
-        elif state == "FAILED":
+        if state == "FAILED":
             reason = status.get("FailureReason", "Unknown")
             print(f"ERROR: Account creation failed: {reason}", file=sys.stderr)
             sys.exit(1)
@@ -54,6 +60,7 @@ def poll_account_creation(org_client, request_id, max_attempts=60, interval=5):
 
 
 def find_ou_by_name(org_client, ou_name, parent_id=None):
+    """Recursively search for an OU by name, returning its dict or None."""
     if parent_id is None:
         roots = org_client.list_roots()["Roots"]
         parent_id = roots[0]["Id"]
@@ -71,6 +78,7 @@ def find_ou_by_name(org_client, ou_name, parent_id=None):
 
 
 def move_account_to_ou(org_client, account_id, destination_ou_id):
+    """Move an account to a target OU, skipping if already there."""
     parents = org_client.list_parents(ChildId=account_id)["Parents"]
     source_id = parents[0]["Id"]
 
@@ -87,6 +95,7 @@ def move_account_to_ou(org_client, account_id, destination_ou_id):
 
 
 def validate_account_access(mgmt_session, account_id, role_name, max_attempts=6, initial_delay=5, max_delay=30):
+    """Validate cross-account access to a new account with exponential backoff retries."""
     role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
     delay = initial_delay
 
@@ -118,8 +127,11 @@ def validate_account_access(mgmt_session, account_id, role_name, max_attempts=6,
                 )
                 return False
 
+    return False
+
 
 def build_output(account_id, account_name, email, ou_id, ou_name, validated, created_at=None):
+    """Build a JSON-serializable output dict for account creation results."""
     return {
         "account_id": account_id,
         "account_name": account_name,

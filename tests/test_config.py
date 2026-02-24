@@ -1,3 +1,5 @@
+"""Tests for configuration loading, merging, and validation."""
+
 import os
 import tempfile
 
@@ -8,6 +10,7 @@ from src.config import load_config, merge_cli_overrides, validate_config
 
 
 def _write_config(data):
+    """Write a config dictionary to a temporary YAML file and return its path."""
     f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
     yaml.dump(data, f)
     f.close()
@@ -15,6 +18,7 @@ def _write_config(data):
 
 
 def _valid_config_with_roles():
+    """Return a valid config dictionary using cross-account role ARNs for authentication."""
     return {
         "management_role_arn": "arn:aws:iam::role/MgmtRole",
         "automation_role_arn": "arn:aws:iam::role/AutoRole",
@@ -26,6 +30,7 @@ def _valid_config_with_roles():
 
 
 def _valid_config_with_profiles():
+    """Return a valid config dictionary using named AWS profiles for authentication."""
     return {
         "mgmt_profile": "mgmt",
         "automation_profile": "portfolio",
@@ -37,7 +42,10 @@ def _valid_config_with_profiles():
 
 
 class TestLoadConfig:
+    """Tests for loading configuration from YAML files."""
+
     def test_load_valid_config(self):
+        """Verify that a valid YAML config file is loaded and parsed correctly."""
         path = _write_config(_valid_config_with_roles())
         try:
             config = load_config(path)
@@ -47,6 +55,7 @@ class TestLoadConfig:
             os.unlink(path)
 
     def test_load_empty_config_returns_empty_dict(self):
+        """Verify that an empty YAML file returns an empty dictionary."""
         f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
         f.write("")
         f.close()
@@ -57,12 +66,16 @@ class TestLoadConfig:
             os.unlink(f.name)
 
     def test_load_config_file_not_found(self):
+        """Verify that loading a nonexistent config file raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
             load_config("/nonexistent/config.yaml")
 
 
 class TestMergeCliOverrides:
+    """Tests for merging CLI argument overrides into the base configuration."""
+
     def test_override_management_role(self):
+        """Verify that the management role ARN can be overridden via CLI arguments."""
         config = _valid_config_with_roles()
         overrides = {
             "management_role_arn": "arn:aws:iam::role/NewRole",
@@ -77,6 +90,7 @@ class TestMergeCliOverrides:
         assert merged["management_role_arn"] == "arn:aws:iam::role/NewRole"
 
     def test_override_profiles(self):
+        """Verify that management and automation AWS profiles can be overridden via CLI arguments."""
         config = _valid_config_with_roles()
         overrides = {
             "management_role_arn": None,
@@ -92,6 +106,7 @@ class TestMergeCliOverrides:
         assert merged["automation_profile"] == "new-auto"
 
     def test_override_ou_name(self):
+        """Verify that the OU name override replaces the default_ou_name in config."""
         config = _valid_config_with_roles()
         overrides = {
             "management_role_arn": None,
@@ -106,6 +121,7 @@ class TestMergeCliOverrides:
         assert merged["default_ou_name"] == "Production"
 
     def test_override_ou_id(self):
+        """Verify that the OU ID can be set directly via CLI arguments."""
         config = _valid_config_with_roles()
         overrides = {
             "management_role_arn": None,
@@ -120,6 +136,7 @@ class TestMergeCliOverrides:
         assert merged["ou_id"] == "ou-abc123"
 
     def test_no_overrides(self):
+        """Verify that config values are preserved when all CLI overrides are None."""
         config = _valid_config_with_roles()
         overrides = {
             "management_role_arn": None,
@@ -136,47 +153,57 @@ class TestMergeCliOverrides:
 
 
 class TestValidateConfig:
+    """Tests for configuration validation rules and required field checks."""
+
     def test_valid_config_with_roles(self):
+        """Verify that a config using role ARNs passes validation successfully."""
         config = _valid_config_with_roles()
         result = validate_config(config)
         assert result == config
 
     def test_valid_config_with_profiles(self):
+        """Verify that a config using named AWS profiles passes validation successfully."""
         config = _valid_config_with_profiles()
         result = validate_config(config)
         assert result == config
 
     def test_missing_mgmt_access(self):
+        """Verify that validation exits when neither management role ARN nor profile is provided."""
         config = _valid_config_with_profiles()
         del config["mgmt_profile"]
         with pytest.raises(SystemExit):
             validate_config(config)
 
     def test_missing_automation_access(self):
+        """Verify that validation exits when neither automation role ARN nor profile is provided."""
         config = _valid_config_with_profiles()
         del config["automation_profile"]
         with pytest.raises(SystemExit):
             validate_config(config)
 
     def test_missing_ssm_path(self):
+        """Verify that validation exits when the SSM parameter path is empty."""
         config = _valid_config_with_roles()
         config["ssm_parameter_path"] = ""
         with pytest.raises(SystemExit):
             validate_config(config)
 
     def test_missing_email_domain(self):
+        """Verify that validation exits when the email domain is empty."""
         config = _valid_config_with_roles()
         config["email"]["domain"] = ""
         with pytest.raises(SystemExit):
             validate_config(config)
 
     def test_missing_email_prefix(self):
+        """Verify that validation exits when the email prefix is empty."""
         config = _valid_config_with_roles()
         config["email"]["prefix"] = ""
         with pytest.raises(SystemExit):
             validate_config(config)
 
     def test_email_override_skips_automation_and_email_validation(self):
+        """Verify that email_override bypasses automation account and email setting validation."""
         config = {
             "mgmt_profile": "mgmt",
             "email_override": "custom@example.com",
@@ -185,6 +212,7 @@ class TestValidateConfig:
         assert result["email_override"] == "custom@example.com"
 
     def test_email_override_still_requires_mgmt(self):
+        """Verify that email_override still requires management account access to be configured."""
         config = {"email_override": "custom@example.com"}
         with pytest.raises(SystemExit):
             validate_config(config)

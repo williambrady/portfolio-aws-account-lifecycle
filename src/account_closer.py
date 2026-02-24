@@ -1,9 +1,12 @@
+"""Account closure logic for AWS Organizations member accounts."""
+
 import sys
 import time
 from datetime import datetime, timezone
 
 
 def list_member_accounts(org_client):
+    """List all member accounts in the organization, excluding the management account."""
     org_info = org_client.describe_organization()["Organization"]
     management_account_id = org_info.get("ManagementAccountId") or org_info["MasterAccountId"]
 
@@ -18,6 +21,7 @@ def list_member_accounts(org_client):
 
 
 def find_account_by_email(org_client, email):
+    """Find an account by its email address, returning the account dict or None."""
     paginator = org_client.get_paginator("list_accounts")
     for page in paginator.paginate():
         for account in page["Accounts"]:
@@ -27,6 +31,7 @@ def find_account_by_email(org_client, email):
 
 
 def close_account(org_client, account_id):
+    """Close an AWS account, handling already-closed accounts idempotently."""
     try:
         org_client.close_account(AccountId=account_id)
         return True
@@ -36,6 +41,7 @@ def close_account(org_client, account_id):
 
 
 def poll_account_closure(org_client, account_id, max_attempts=60, interval=5):
+    """Poll account status until it transitions away from ACTIVE."""
     for attempt in range(max_attempts):
         response = org_client.describe_account(AccountId=account_id)
         account = response["Account"]
@@ -53,6 +59,7 @@ def poll_account_closure(org_client, account_id, max_attempts=60, interval=5):
 
 
 def build_closure_output(account_id, account_name, email, status, closed_at=None):
+    """Build a JSON-serializable output dict for account closure results."""
     return {
         "account_id": account_id,
         "account_name": account_name,

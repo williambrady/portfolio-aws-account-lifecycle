@@ -1,3 +1,5 @@
+"""AWS SSM parameter operations and session management."""
+
 import sys
 
 import boto3
@@ -6,6 +8,7 @@ DEFAULT_REGION = "us-east-1"
 
 
 def get_session(profile_name=None, role_arn=None, region_name=None, session_name="account-lifecycle"):
+    """Create a boto3 session using a named profile or assumed role."""
     region_name = region_name or DEFAULT_REGION
     if profile_name:
         return boto3.Session(profile_name=profile_name, region_name=region_name)
@@ -23,6 +26,7 @@ def get_session(profile_name=None, role_arn=None, region_name=None, session_name
 
 
 def read_unique_number(session, parameter_path):
+    """Read an integer unique number from an SSM parameter."""
     ssm = session.client("ssm")
     try:
         response = ssm.get_parameter(Name=parameter_path)
@@ -36,6 +40,7 @@ def read_unique_number(session, parameter_path):
 
 
 def increment_unique_number(session, parameter_path, current_value):
+    """Increment the unique number SSM parameter by one."""
     ssm = session.client("ssm")
     new_value = current_value + 1
     ssm.put_parameter(

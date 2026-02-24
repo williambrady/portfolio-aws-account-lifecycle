@@ -16,3 +16,10 @@ repos:
       - id: ruff
         args: ['--fix']
       - id: ruff-format
+
+  - repo: https://github.com/pylint-dev/pylint
+    rev: v3.3.4
+    hooks:
+      - id: pylint
+        additional_dependencies: ['boto3', 'pyyaml', 'pytest']
+        args: ['--disable=C0301,R0801,R0903,R0913,R0917,R0914,R0912,R0915,R1732']

@@ -1,3 +1,5 @@
+"""Configuration loading, merging, and validation."""
+
 import sys
 
 import yaml
@@ -8,11 +10,13 @@ REQUIRED_FIELDS = [
 
 
 def load_config(config_path="config.yaml"):
-    with open(config_path, "r") as f:
+    """Load configuration from a YAML file."""
+    with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
 def merge_cli_overrides(config, cli_args):
+    """Merge CLI argument overrides into the loaded configuration."""
     overrides = {}
     if cli_args.get("management_role_arn"):
         overrides["management_role_arn"] = cli_args["management_role_arn"]
@@ -34,6 +38,7 @@ def merge_cli_overrides(config, cli_args):
 
 
 def validate_config(config):
+    """Validate required configuration fields, exiting on errors."""
     has_mgmt_access = config.get("mgmt_profile") or config.get("management_role_arn")
     if not has_mgmt_access:
         print("ERROR: Must provide either mgmt_profile or management_role_arn", file=sys.stderr)
