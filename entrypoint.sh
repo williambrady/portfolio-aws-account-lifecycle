@@ -7,6 +7,14 @@ NC='\033[0m'
 
 echo -e "${GREEN}=== AWS Account Lifecycle ===${NC}" >&2
 
+# Read profiles from config.yaml if env vars not set
+if [ -z "${MGMT_PROFILE:-}" ] && [ -f config.yaml ]; then
+    MGMT_PROFILE=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')) or {}; print(c.get('mgmt_profile') or '')" 2>/dev/null || true)
+fi
+if [ -z "${AUTOMATION_PROFILE:-}" ] && [ -f config.yaml ]; then
+    AUTOMATION_PROFILE=$(python3 -c "import yaml; c=yaml.safe_load(open('config.yaml')) or {}; print(c.get('automation_profile') or '')" 2>/dev/null || true)
+fi
+
 # Validate AWS credentials using automation profile if set, otherwise default
 VALIDATE_PROFILE="${AUTOMATION_PROFILE:-${MGMT_PROFILE:-}}"
 if [ -n "$VALIDATE_PROFILE" ]; then

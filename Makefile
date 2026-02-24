@@ -19,6 +19,9 @@ endif
 ifdef AUTOMATION_PROFILE
 CLI_ARGS += --automation-profile $(AUTOMATION_PROFILE)
 endif
+ifdef EMAIL
+CLI_ARGS += --email $(EMAIL)
+endif
 
 # Default target
 help:
@@ -32,9 +35,10 @@ help:
 	@echo "  clean              - Remove Docker image"
 	@echo ""
 	@echo "Environment variables:"
-	@echo "  MGMT_PROFILE       - AWS profile for management account (required)"
-	@echo "  AUTOMATION_PROFILE - AWS profile for automation account (required)"
+	@echo "  MGMT_PROFILE       - AWS profile for management account (required if not set in config.yaml)"
+	@echo "  AUTOMATION_PROFILE - AWS profile for automation account (required if not set in config.yaml)"
 	@echo "  ACCOUNT_NAME       - Name for the new account (required for create-account/dry-run)"
+	@echo "  EMAIL              - Use a specific email address (skips SSM unique number)"
 	@echo "  ACCOUNT_ID         - Account ID to close (required for close-account)"
 	@echo "  APPROVE            - Set to 'true' to actually close accounts (default: dry-run)"
 

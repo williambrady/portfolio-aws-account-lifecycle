@@ -21,7 +21,7 @@ from src.account_creator import (
     validate_account_access,
 )
 from src.config import load_config, merge_cli_overrides, validate_config
-from src.ssm_client import get_session, increment_unique_number, read_unique_number
+from src.ssm_client import get_caller_identity, get_session, increment_unique_number, read_unique_number
 
 
 def create_account_command(args):
@@ -48,6 +48,18 @@ def create_account_command(args):
     region = config.get("region")
     email_override = config.get("email_override")
 
+    # Resolve management account identity
+    print("Phase 0: Resolving account identities...", file=sys.stderr)
+    mgmt_session = get_session(
+        profile_name=config.get("mgmt_profile"),
+        role_arn=config.get("management_role_arn"),
+        region_name=region,
+        session_name="lifecycle-create-account",
+    )
+    mgmt_identity = get_caller_identity(mgmt_session)
+    print(f"  Management account: {mgmt_identity['account_id']} ({mgmt_identity['arn']})", file=sys.stderr)
+
+    automation_identity = None
     unique_number = None
     if email_override:
         print("Phase 1: Using provided email (skipping SSM)...", file=sys.stderr)
@@ -61,6 +73,10 @@ def create_account_command(args):
             role_arn=config.get("automation_role_arn"),
             region_name=region,
             session_name="lifecycle-ssm-read",
+        )
+        automation_identity = get_caller_identity(automation_session)
+        print(
+            f"  Automation account: {automation_identity['account_id']} ({automation_identity['arn']})", file=sys.stderr
         )
         unique_number = read_unique_number(automation_session, ssm_path)
         print(f"  Current unique number: {unique_number}", file=sys.stderr)
@@ -90,6 +106,8 @@ def create_account_command(args):
         print("  No changes will be made.", file=sys.stderr)
         output = {
             "dry_run": True,
+            "management_account": mgmt_identity,
+            "automation_account": automation_identity,
             "account_name": account_name,
             "email": email,
             "ou_name": ou_name,
@@ -103,12 +121,6 @@ def create_account_command(args):
         return
 
     print("Phase 3: Creating account in management account...", file=sys.stderr)
-    mgmt_session = get_session(
-        profile_name=config.get("mgmt_profile"),
-        role_arn=config.get("management_role_arn"),
-        region_name=region,
-        session_name="lifecycle-create-account",
-    )
     org_client = mgmt_session.client("organizations")
 
     status = create_account(org_client, account_name, email, tags)
@@ -158,6 +170,8 @@ def create_account_command(args):
         print("Phase 7: Skipping SSM increment (custom email provided)", file=sys.stderr)
 
     output = build_output(account_id, account_name, email, target_ou_id, target_ou_name, validated)
+    output["management_account"] = mgmt_identity
+    output["automation_account"] = automation_identity
     print(json.dumps(output, indent=2))
     print("\nAccount creation complete!", file=sys.stderr)
 
@@ -185,25 +199,27 @@ def _get_mgmt_org_client(args):
         region_name=region,
         session_name="lifecycle-close-account",
     )
-    return mgmt_session.client("organizations"), config
+    mgmt_identity = get_caller_identity(mgmt_session)
+    print(f"  Management account: {mgmt_identity['account_id']} ({mgmt_identity['arn']})", file=sys.stderr)
+    return mgmt_session.client("organizations"), config, mgmt_identity
 
 
 def close_account_command(args):
     """Execute the close-account workflow."""
     print("Phase 1: Getting management account session...", file=sys.stderr)
-    org_client, config = _get_mgmt_org_client(args)
+    org_client, config, mgmt_identity = _get_mgmt_org_client(args)
 
     polling_config = config.get("polling", {})
     max_attempts = polling_config.get("max_attempts", 60)
     interval = polling_config.get("interval_seconds", 5)
 
     if args.all:
-        _close_all_accounts(org_client, args, max_attempts, interval)
+        _close_all_accounts(org_client, args, max_attempts, interval, mgmt_identity)
     else:
-        _close_single_account(org_client, args, max_attempts, interval)
+        _close_single_account(org_client, args, max_attempts, interval, mgmt_identity)
 
 
-def _close_single_account(org_client, args, max_attempts, interval):
+def _close_single_account(org_client, args, max_attempts, interval, mgmt_identity):
     """Close a single account identified by account ID or email."""
     if args.email:
         print(f"Phase 2: Looking up account by email: {args.email}", file=sys.stderr)
@@ -232,6 +248,7 @@ def _close_single_account(org_client, args, max_attempts, interval):
     if status != "ACTIVE":
         print(f"  Account is already {status}, skipping closure", file=sys.stderr)
         output = build_closure_output(account_id, account_name, email, status)
+        output["management_account"] = mgmt_identity
         print(json.dumps(output, indent=2))
         return
 
@@ -239,7 +256,13 @@ def _close_single_account(org_client, args, max_attempts, interval):
         print("\n--- DRY RUN ---", file=sys.stderr)
         print(f"  Would close account: {account_name} ({account_id})", file=sys.stderr)
         print("  No changes will be made.", file=sys.stderr)
-        output = {"dry_run": True, "account_id": account_id, "account_name": account_name, "email": email}
+        output = {
+            "dry_run": True,
+            "management_account": mgmt_identity,
+            "account_id": account_id,
+            "account_name": account_name,
+            "email": email,
+        }
         print(json.dumps(output, indent=2))
         return
 
@@ -258,11 +281,12 @@ def _close_single_account(org_client, args, max_attempts, interval):
         final_status = poll_account_closure(org_client, account_id, max_attempts, interval)
 
     output = build_closure_output(account_id, account_name, email, final_status)
+    output["management_account"] = mgmt_identity
     print(json.dumps(output, indent=2))
     print("\nAccount closure complete!", file=sys.stderr)
 
 
-def _close_all_accounts(org_client, args, max_attempts, interval):
+def _close_all_accounts(org_client, args, max_attempts, interval, mgmt_identity):
     """Close all active member accounts with interactive confirmation."""
     print("Phase 2: Listing all member accounts...", file=sys.stderr)
     all_accounts = list_member_accounts(org_client)
@@ -276,6 +300,7 @@ def _close_all_accounts(org_client, args, max_attempts, interval):
     if not active_accounts:
         print("  No active member accounts to close.", file=sys.stderr)
         output = {
+            "management_account": mgmt_identity,
             "closed": [],
             "failed": [],
             "skipped": [
@@ -299,6 +324,7 @@ def _close_all_accounts(org_client, args, max_attempts, interval):
         print("  No changes will be made.", file=sys.stderr)
         output = {
             "dry_run": True,
+            "management_account": mgmt_identity,
             "accounts_to_close": [
                 {"account_id": a["Id"], "account_name": a.get("Name", ""), "email": a.get("Email", "")}
                 for a in active_accounts
@@ -338,6 +364,7 @@ def _close_all_accounts(org_client, args, max_attempts, interval):
             failed.append({"account_id": account_id, "account_name": account_name, "error": str(e)})
 
     output = {
+        "management_account": mgmt_identity,
         "closed": closed,
         "failed": failed,
         "skipped": skipped,
