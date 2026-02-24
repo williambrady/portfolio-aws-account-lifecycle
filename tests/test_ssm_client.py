@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.ssm_client import get_session, increment_unique_number, read_unique_number
+from src.ssm_client import get_caller_identity, get_session, increment_unique_number, read_unique_number
 
 
 class TestGetSession:
@@ -81,6 +81,29 @@ class TestGetSession:
         """Verify that an explicitly provided region overrides the default region."""
         get_session(region_name="eu-west-1")
         mock_boto3.Session.assert_called_once_with(region_name="eu-west-1")
+
+
+class TestGetCallerIdentity:
+    """Test caller identity resolution from a boto3 session."""
+
+    def test_returns_account_id_and_arn(self):
+        """Verify that get_caller_identity returns the expected dict shape."""
+        mock_session = MagicMock()
+        mock_sts = MagicMock()
+        mock_session.client.return_value = mock_sts
+        mock_sts.get_caller_identity.return_value = {
+            "UserId": "AIDEXAMPLE",
+            "Account": "123456789012",
+            "Arn": "arn:aws:iam::123456789012:user/test-user",
+        }
+
+        result = get_caller_identity(mock_session)
+
+        assert result == {
+            "account_id": "123456789012",
+            "arn": "arn:aws:iam::123456789012:user/test-user",
+        }
+        mock_session.client.assert_called_once_with("sts")
 
 
 class TestReadUniqueNumber:
