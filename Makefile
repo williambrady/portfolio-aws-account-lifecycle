@@ -1,52 +1,55 @@
-.PHONY: help init plan apply destroy fmt validate lint test clean
+.PHONY: build create-account dry-run shell clean help
+
+IMAGE_NAME := portfolio-aws-account-lifecycle
+IMAGE_TAG := dev
+
+DOCKER_ENV := -e AWS_PROFILE=$(AWS_PROFILE)
 
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  init      - Initialize Terraform"
-	@echo "  plan      - Run Terraform plan"
-	@echo "  apply     - Apply Terraform changes"
-	@echo "  destroy   - Destroy Terraform resources"
-	@echo "  fmt       - Format Terraform and Python code"
-	@echo "  validate  - Validate Terraform configuration"
-	@echo "  lint      - Run linters"
-	@echo "  test      - Run tests"
-	@echo "  clean     - Clean generated files"
-	@echo "  pre-commit- Run pre-commit hooks"
+	@echo "  build          - Build the Docker image"
+	@echo "  create-account - Create a new AWS account (requires ACCOUNT_NAME)"
+	@echo "  dry-run        - Show plan without making changes (requires ACCOUNT_NAME)"
+	@echo "  shell          - Open shell in container"
+	@echo "  clean          - Remove Docker image"
+	@echo ""
+	@echo "Environment variables:"
+	@echo "  AWS_PROFILE    - AWS profile to use (required)"
+	@echo "  ACCOUNT_NAME   - Name for the new account (required for create-account/dry-run)"
 
-# Terraform targets
-init:
-	cd terraform && terraform init
+# Build the Docker image
+build:
+	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
-plan:
-	cd terraform && terraform plan
+# Create a new AWS account
+create-account: build
+ifndef ACCOUNT_NAME
+	$(error ACCOUNT_NAME is required)
+endif
+	docker run --rm \
+		-v "$(HOME)/.aws:/home/lifecycle/.aws:ro" \
+		$(DOCKER_ENV) \
+		$(IMAGE_NAME):$(IMAGE_TAG) create-account $(ACCOUNT_NAME)
 
-apply:
-	cd terraform && terraform apply
+# Dry run - show plan without making changes
+dry-run: build
+ifndef ACCOUNT_NAME
+	$(error ACCOUNT_NAME is required)
+endif
+	docker run --rm \
+		-v "$(HOME)/.aws:/home/lifecycle/.aws:ro" \
+		$(DOCKER_ENV) \
+		$(IMAGE_NAME):$(IMAGE_TAG) create-account $(ACCOUNT_NAME) --dry-run
 
-destroy:
-	cd terraform && terraform destroy
+# Open interactive shell in container
+shell: build
+	docker run --rm -it \
+		-v "$(HOME)/.aws:/home/lifecycle/.aws:ro" \
+		$(DOCKER_ENV) \
+		--entrypoint /bin/bash \
+		$(IMAGE_NAME):$(IMAGE_TAG)
 
-fmt:
-	terraform fmt -recursive terraform/
-	@if command -v black >/dev/null 2>&1; then black scripts/; fi
-
-validate:
-	cd terraform && terraform validate
-
-lint:
-	@if command -v tflint >/dev/null 2>&1; then cd terraform && tflint; fi
-	@if command -v flake8 >/dev/null 2>&1; then flake8 scripts/; fi
-	@if command -v pylint >/dev/null 2>&1; then pylint scripts/; fi
-
-test:
-	@if command -v pytest >/dev/null 2>&1; then pytest tests/; fi
-
+# Clean up Docker image
 clean:
-	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-
-pre-commit:
-	pre-commit run --all-files
+	docker rmi $(IMAGE_NAME):$(IMAGE_TAG) 2>/dev/null || true

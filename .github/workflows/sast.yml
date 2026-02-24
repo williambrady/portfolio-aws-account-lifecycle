@@ -63,3 +63,28 @@ jobs:
           echo "| Medium | ${{ steps.security-scan.outputs.medium-count }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Low | ${{ steps.security-scan.outputs.low-count }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Total** | **${{ steps.security-scan.outputs.findings-count }}** |" >> $GITHUB_STEP_SUMMARY
+
+  trivy:
+    name: Container Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build container image
+        run: docker build -t portfolio-aws-account-lifecycle:scan .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'portfolio-aws-account-lifecycle:scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true

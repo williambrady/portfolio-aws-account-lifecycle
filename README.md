@@ -1,132 +1,108 @@
-# Project Name
+# portfolio-aws-account-lifecycle
 
-Brief description of your project.
+AWS Account Lifecycle Management — creates new member accounts in an AWS Organization, places them in the correct OU, and validates access.
+
+## Features
+
+- Creates AWS accounts via Organizations API
+- Generates unique email addresses using SSM-tracked org numbers
+- Places accounts in the correct Organizational Unit
+- Validates access via assumeRole into new accounts
+- JSON output for pipeline integration
+- Dry-run mode to preview changes
 
 ## Prerequisites
 
-- [Terraform](https://www.terraform.io/downloads) >= 1.0
-- [AWS CLI](https://aws.amazon.com/cli/) configured with appropriate credentials
-- [pre-commit](https://pre-commit.com/) (optional, for development)
-- [tflint](https://github.com/terraform-linters/tflint) (optional, for linting)
+- Docker
+- AWS CLI configured with appropriate profiles
+- IAM roles in management and automation accounts
 
 ## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/your-repo.git
-cd your-repo
+# Build the Docker image
+make build
 
-# Initialize Terraform
-cd terraform
-terraform init
+# Preview what will happen (no changes made)
+make dry-run ACCOUNT_NAME=my-new-account AWS_PROFILE=mgmt
 
-# Preview changes
-terraform plan
+# Create a new account
+make create-account ACCOUNT_NAME=my-new-account AWS_PROFILE=mgmt
+```
 
-# Apply changes
-terraform apply
+## Configuration
+
+Edit `config.yaml` to set:
+
+- **management_role_arn** — IAM role in the management account for Organizations API
+- **automation_role_arn** — IAM role in the automation account for SSM access
+- **ssm_parameter_path** — SSM parameter storing the current org number
+- **email** — Domain and prefix for generated email addresses
+- **default_ou_name** — Target OU for new accounts
+- **tags** — Default tags applied to new accounts
+
+## Email Pattern
+
+```
+{prefix}+rc-org-{org_number}-{account_name}@{domain}
+```
+
+Example: `will+rc-org-5-my-new-account@crofton.cloud`
+
+## CLI Options
+
+```bash
+# Override target OU
+... create-account my-account --ou-name Production
+
+# Use OU ID directly (bypasses name lookup)
+... create-account my-account --ou-id ou-abc123def
+
+# Override role ARNs
+... create-account my-account --management-role-arn arn:aws:iam::role/CustomRole
+
+# Use a different config file
+... create-account my-account --config /path/to/config.yaml
 ```
 
 ## Project Structure
 
 ```
-.
-├── .github/
-│   ├── workflows/
-│   │   ├── lint.yml          # Pre-commit linting pipeline
-│   │   └── sast.yml          # Security scanning pipeline
-│   └── CODEOWNERS            # Code ownership definitions
-├── cloudformation/           # CloudFormation templates
-├── scripts/                  # Utility scripts
-├── terraform/
-│   ├── main.tf               # Main Terraform configuration
-│   ├── variables.tf          # Input variables
-│   ├── outputs.tf            # Output definitions
-│   ├── providers.tf          # Provider configuration
-│   └── versions.tf           # Version constraints
-├── .gitignore
-├── .pre-commit-config.yaml   # Pre-commit hooks configuration
-├── .tflint.hcl               # TFLint configuration
-├── .terraform-docs.yml       # Terraform docs configuration
-├── CLAUDE.md                 # AI assistant guidance
-├── LICENSE
-├── Makefile
-└── README.md
+├── src/
+│   ├── main.py              # CLI entrypoint
+│   ├── config.py            # Config loading and validation
+│   ├── ssm_client.py        # SSM parameter operations
+│   └── account_creator.py   # Account creation logic
+├── tests/
+│   ├── test_config.py
+│   ├── test_ssm_client.py
+│   └── test_account_creator.py
+├── config.yaml              # Configuration
+├── Dockerfile               # Container definition
+├── entrypoint.sh            # Container entrypoint
+├── Makefile                 # Build and run targets
+└── requirements.txt         # Python dependencies
+```
+
+## Development
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+pip install pytest
+
+# Run tests
+pytest tests/ -v
+
+# Run linting
+pre-commit run --all-files
 ```
 
 ## Branching Strategy
 
-```
-main (production)
- └── develop (integration)
-      └── feature/* (new features)
-```
-
-| Branch | Purpose | Merges To |
-|--------|---------|-----------|
-| `main` | Production-ready code. Protected branch. | - |
-| `develop` | Integration branch for features. | `main` (via PR) |
-| `feature/*` | New features and changes. | `develop` (via PR) |
-
-### Workflow
-
-1. Create a feature branch from `develop`:
-   ```bash
-   git checkout develop
-   git pull
-   git checkout -b feature/my-feature
-   ```
-
-2. Make changes and commit:
-   ```bash
-   git add .
-   git commit -m "feat: add my feature"
-   ```
-
-3. Push and create PR to `develop`:
-   ```bash
-   git push -u origin feature/my-feature
-   ```
-
-4. After review and merge to `develop`, create PR from `develop` to `main` for release.
-
-## Development
-
-### Setup Pre-commit Hooks
-
-```bash
-pip install pre-commit
-pre-commit install
-```
-
-### Available Make Targets
-
-```bash
-make help       # Show available targets
-make init       # Initialize Terraform
-make plan       # Run Terraform plan
-make apply      # Apply changes
-make fmt        # Format code
-make lint       # Run linters
-make test       # Run tests
-```
-
-## Configuration
-
-### Variables
-
-| Name | Description | Default |
-|------|-------------|---------|
-| `aws_region` | AWS region for resources | `us-east-1` |
-| `project_name` | Name of the project | `my-project` |
-| `environment` | Environment name | `dev` |
-
-## Security
-
-This project includes automated security scanning via [portfolio-code-scanner](https://github.com/williambrady/portfolio-code-scanner). Security scans run on:
-- Push to `main` or `develop` branches
-- Pull requests
-- Daily scheduled runs
+- `main` — Production
+- `develop` — Integration
+- `feature/*` — Feature branches (PR to develop)
 
 ## License
 

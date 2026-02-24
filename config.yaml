@@ -1,0 +1,35 @@
+# AWS Account Lifecycle Configuration
+# -----------------------------------
+# This file defines settings for creating and managing AWS accounts
+# within an AWS Organization.
+
+# Management account role ARN - used for Organizations API calls
+management_role_arn: "arn:aws:iam::role/"
+
+# Automation account role ARN - used for SSM parameter access
+automation_role_arn: "arn:aws:iam::role/"
+
+# SSM parameter path for org number tracking (in automation account)
+ssm_parameter_path: "/portfolio/account-lifecycle/org-number"
+
+# Email settings for new accounts
+email:
+  domain: "crofton.cloud"
+  prefix: "will"
+  # Pattern: {prefix}+rc-org-{org_number}-{account_name}@{domain}
+
+# Default OU name for new accounts
+default_ou_name: "Non-Production"
+
+# Role name to validate in new accounts
+validation_role_name: "OrganizationAccountAccessRole"
+
+# Account creation polling
+polling:
+  max_attempts: 60
+  interval_seconds: 5
+
+# Default tags applied to new accounts
+tags:
+  ManagedBy: "portfolio-aws-account-lifecycle"
+  Environment: "non-production"
