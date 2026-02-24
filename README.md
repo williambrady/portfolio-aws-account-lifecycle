@@ -1,132 +1,171 @@
-# Project Name
+# portfolio-aws-account-lifecycle
 
-Brief description of your project.
+AWS Account Lifecycle Management — creates new member accounts in an AWS Organization, places them in the correct OU, validates access, and closes accounts when no longer needed.
+
+## Features
+
+- Creates AWS accounts via Organizations API
+- Generates unique email addresses using SSM-tracked unique numbers
+- Places accounts in the correct Organizational Unit
+- Validates access via assumeRole into new accounts
+- Closes accounts by ID, email, or all member accounts at once
+- JSON output for pipeline integration
+- Dry-run mode to preview changes
 
 ## Prerequisites
 
-- [Terraform](https://www.terraform.io/downloads) >= 1.0
-- [AWS CLI](https://aws.amazon.com/cli/) configured with appropriate credentials
-- [pre-commit](https://pre-commit.com/) (optional, for development)
-- [tflint](https://github.com/terraform-linters/tflint) (optional, for linting)
+- Docker
+- AWS CLI configured with appropriate profiles
+- IAM roles in management and automation accounts
 
 ## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/your-repo.git
-cd your-repo
+# Build the Docker image
+make build
 
-# Initialize Terraform
-cd terraform
-terraform init
+# Preview what will happen (no changes made)
+make dry-run ACCOUNT_NAME=my-new-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation
 
-# Preview changes
-terraform plan
+# Create a new account
+make create-account ACCOUNT_NAME=my-new-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation
+```
 
-# Apply changes
-terraform apply
+## Configuration
+
+Edit `config.yaml` to set:
+
+- **management_role_arn** — IAM role in the management account for Organizations API
+- **automation_role_arn** — IAM role in the automation account for SSM access
+- **ssm_parameter_path** — SSM parameter storing the current unique number
+- **email** — Domain and prefix for generated email addresses
+- **default_ou_name** — Target OU for new accounts
+- **tags** — Default tags applied to new accounts
+
+## Email Pattern
+
+```
+{prefix}+rc-org-{unique_number}-{account_name}@{domain}
+```
+
+Example: `will+rc-org-5-my-new-account@crofton.cloud`
+
+## Closing Accounts
+
+Close targets are **dry-run by default**. You must pass `APPROVE=true` to actually close accounts.
+
+```bash
+# Preview what would be closed (default, safe)
+make close-account ACCOUNT_ID=123456789012 MGMT_PROFILE=mgmt
+
+# Actually close the account
+make close-account ACCOUNT_ID=123456789012 MGMT_PROFILE=mgmt APPROVE=true
+
+# Preview closing ALL member accounts
+make close-all-accounts MGMT_PROFILE=mgmt
+
+# Actually close ALL member accounts (also requires interactive confirmation)
+make close-all-accounts MGMT_PROFILE=mgmt APPROVE=true
+
+# Close by email (CLI, no dry-run default)
+python -m src.main close-account --email "will+rc-org-50-testing@crofton.cloud" --mgmt-profile mgmt
+```
+
+## AWS Constraints
+
+### Account Creation
+
+- New accounts are created via `organizations:CreateAccount` and take 1-5 minutes to complete
+- Each account requires a unique email address
+- The `OrganizationAccountAccessRole` is automatically created in new accounts
+
+### Account Closure
+
+- Closure is **asynchronous** — `close_account()` returns immediately, then the account transitions: `ACTIVE` → `PENDING_CLOSURE` → `SUSPENDED`
+- After 90 days in `SUSPENDED` state, the account is permanently deleted
+- Closure is **reversible** within 90 days via AWS Support
+- **Rate limit**: Max 10% of member accounts can be closed in a rolling 30-day window (minimum 10, maximum 1000)
+- Cannot close the **management account**
+- Organization must be in **All Features** mode
+- There is no built-in "find by email" API — `list_accounts()` must be paginated and matched client-side
+
+## CLI Options
+
+### create-account
+
+```bash
+# Override target OU
+... create-account my-account --ou-name Production
+
+# Use OU ID directly (bypasses name lookup)
+... create-account my-account --ou-id ou-abc123def
+
+# Override role ARNs
+... create-account my-account --management-role-arn arn:aws:iam::role/CustomRole
+
+# Use a different config file
+... create-account my-account --config /path/to/config.yaml
+```
+
+### close-account
+
+```bash
+# Close by account ID
+... close-account --account-id 123456789012
+
+# Close by email
+... close-account --email "will+rc-org-50-testing@crofton.cloud"
+
+# Close all member accounts (interactive confirmation required)
+... close-account --all
+
+# Skip polling for closure status
+... close-account --account-id 123456789012 --no-wait
+
+# Preview without closing
+... close-account --account-id 123456789012 --dry-run
 ```
 
 ## Project Structure
 
 ```
-.
-├── .github/
-│   ├── workflows/
-│   │   ├── lint.yml          # Pre-commit linting pipeline
-│   │   └── sast.yml          # Security scanning pipeline
-│   └── CODEOWNERS            # Code ownership definitions
-├── cloudformation/           # CloudFormation templates
-├── scripts/                  # Utility scripts
-├── terraform/
-│   ├── main.tf               # Main Terraform configuration
-│   ├── variables.tf          # Input variables
-│   ├── outputs.tf            # Output definitions
-│   ├── providers.tf          # Provider configuration
-│   └── versions.tf           # Version constraints
-├── .gitignore
-├── .pre-commit-config.yaml   # Pre-commit hooks configuration
-├── .tflint.hcl               # TFLint configuration
-├── .terraform-docs.yml       # Terraform docs configuration
-├── CLAUDE.md                 # AI assistant guidance
-├── LICENSE
-├── Makefile
-└── README.md
+├── src/
+│   ├── main.py              # CLI entrypoint
+│   ├── config.py            # Config loading and validation
+│   ├── ssm_client.py        # SSM parameter operations
+│   ├── account_creator.py   # Account creation logic
+│   └── account_closer.py    # Account closure logic
+├── tests/
+│   ├── test_config.py
+│   ├── test_ssm_client.py
+│   ├── test_account_creator.py
+│   └── test_account_closer.py
+├── config.yaml              # Configuration
+├── Dockerfile               # Container definition
+├── entrypoint.sh            # Container entrypoint
+├── Makefile                 # Build and run targets
+└── requirements.txt         # Python dependencies
+```
+
+## Development
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+pip install pytest
+
+# Run tests
+pytest tests/ -v
+
+# Run linting
+pre-commit run --all-files
 ```
 
 ## Branching Strategy
 
-```
-main (production)
- └── develop (integration)
-      └── feature/* (new features)
-```
-
-| Branch | Purpose | Merges To |
-|--------|---------|-----------|
-| `main` | Production-ready code. Protected branch. | - |
-| `develop` | Integration branch for features. | `main` (via PR) |
-| `feature/*` | New features and changes. | `develop` (via PR) |
-
-### Workflow
-
-1. Create a feature branch from `develop`:
-   ```bash
-   git checkout develop
-   git pull
-   git checkout -b feature/my-feature
-   ```
-
-2. Make changes and commit:
-   ```bash
-   git add .
-   git commit -m "feat: add my feature"
-   ```
-
-3. Push and create PR to `develop`:
-   ```bash
-   git push -u origin feature/my-feature
-   ```
-
-4. After review and merge to `develop`, create PR from `develop` to `main` for release.
-
-## Development
-
-### Setup Pre-commit Hooks
-
-```bash
-pip install pre-commit
-pre-commit install
-```
-
-### Available Make Targets
-
-```bash
-make help       # Show available targets
-make init       # Initialize Terraform
-make plan       # Run Terraform plan
-make apply      # Apply changes
-make fmt        # Format code
-make lint       # Run linters
-make test       # Run tests
-```
-
-## Configuration
-
-### Variables
-
-| Name | Description | Default |
-|------|-------------|---------|
-| `aws_region` | AWS region for resources | `us-east-1` |
-| `project_name` | Name of the project | `my-project` |
-| `environment` | Environment name | `dev` |
-
-## Security
-
-This project includes automated security scanning via [portfolio-code-scanner](https://github.com/williambrady/portfolio-code-scanner). Security scans run on:
-- Push to `main` or `develop` branches
-- Pull requests
-- Daily scheduled runs
+- `main` — Production
+- `develop` — Integration
+- `feature/*` — Feature branches (PR to develop)
 
 ## License
 

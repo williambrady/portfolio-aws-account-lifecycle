@@ -1,0 +1,69 @@
+"""Account closure logic for AWS Organizations member accounts."""
+
+import sys
+import time
+from datetime import datetime, timezone
+
+
+def list_member_accounts(org_client):
+    """List all member accounts in the organization, excluding the management account."""
+    org_info = org_client.describe_organization()["Organization"]
+    management_account_id = org_info.get("ManagementAccountId") or org_info["MasterAccountId"]
+
+    accounts = []
+    paginator = org_client.get_paginator("list_accounts")
+    for page in paginator.paginate():
+        for account in page["Accounts"]:
+            if account["Id"] != management_account_id:
+                accounts.append(account)
+
+    return accounts
+
+
+def find_account_by_email(org_client, email):
+    """Find an account by its email address, returning the account dict or None."""
+    paginator = org_client.get_paginator("list_accounts")
+    for page in paginator.paginate():
+        for account in page["Accounts"]:
+            if account["Email"] == email:
+                return account
+    return None
+
+
+def close_account(org_client, account_id):
+    """Close an AWS account, handling already-closed accounts idempotently."""
+    try:
+        org_client.close_account(AccountId=account_id)
+        return True
+    except org_client.exceptions.AccountAlreadyClosedException:
+        print(f"  Account {account_id} is already closed", file=sys.stderr)
+        return True
+
+
+def poll_account_closure(org_client, account_id, max_attempts=60, interval=5):
+    """Poll account status until it transitions away from ACTIVE."""
+    for attempt in range(max_attempts):
+        response = org_client.describe_account(AccountId=account_id)
+        account = response["Account"]
+        status = account["Status"]
+
+        print(f"  Account {account_id} status: {status} (attempt {attempt + 1}/{max_attempts})", file=sys.stderr)
+
+        if status != "ACTIVE":
+            return status
+
+        time.sleep(interval)
+
+    print(f"  WARNING: Account {account_id} still ACTIVE after polling timeout", file=sys.stderr)
+    return "ACTIVE"
+
+
+def build_closure_output(account_id, account_name, email, status, closed_at=None):
+    """Build a JSON-serializable output dict for account closure results."""
+    return {
+        "account_id": account_id,
+        "account_name": account_name,
+        "email": email,
+        "status": status,
+        "closed_at": closed_at or datetime.now(timezone.utc).isoformat(),
+    }
