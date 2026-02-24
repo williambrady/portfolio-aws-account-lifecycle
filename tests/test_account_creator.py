@@ -9,8 +9,33 @@ from src.account_creator import (
     generate_email,
     move_account_to_ou,
     poll_account_creation,
+    sanitize_account_name,
     validate_account_access,
 )
+
+
+class TestSanitizeAccountName:
+    def test_lowercase(self):
+        assert sanitize_account_name("My-Account") == "my-account"
+
+    def test_spaces_replaced(self):
+        assert sanitize_account_name("my account") == "my-account"
+
+    def test_special_chars_replaced(self):
+        assert sanitize_account_name("my_account!@#") == "my-account"
+
+    def test_consecutive_hyphens_collapsed(self):
+        assert sanitize_account_name("my---account") == "my-account"
+
+    def test_leading_trailing_hyphens_stripped(self):
+        assert sanitize_account_name("-my-account-") == "my-account"
+
+    def test_truncated_to_60_chars(self):
+        long_name = "a" * 100
+        assert len(sanitize_account_name(long_name)) == 60
+
+    def test_already_clean(self):
+        assert sanitize_account_name("my-account") == "my-account"
 
 
 class TestGenerateEmail:
@@ -23,6 +48,11 @@ class TestGenerateEmail:
         config = {"email": {"prefix": "admin", "domain": "example.com"}}
         result = generate_email(config, 100, "prod")
         assert result == "admin+rc-org-100-prod@example.com"
+
+    def test_sanitizes_account_name(self):
+        config = {"email": {"prefix": "will", "domain": "crofton.cloud"}}
+        result = generate_email(config, 5, "My Account!")
+        assert result == "will+rc-org-5-my-account@crofton.cloud"
 
 
 class TestCreateAccount:

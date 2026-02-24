@@ -46,6 +46,16 @@ class TestLoadConfig:
         finally:
             os.unlink(path)
 
+    def test_load_empty_config_returns_empty_dict(self):
+        f = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
+        f.write("")
+        f.close()
+        try:
+            config = load_config(f.name)
+            assert config == {}
+        finally:
+            os.unlink(f.name)
+
     def test_load_config_file_not_found(self):
         with pytest.raises(FileNotFoundError):
             load_config("/nonexistent/config.yaml")

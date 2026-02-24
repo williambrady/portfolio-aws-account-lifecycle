@@ -1,3 +1,4 @@
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -5,11 +6,20 @@ from datetime import datetime, timezone
 import boto3
 
 
+def sanitize_account_name(name):
+    sanitized = name.lower().strip()
+    sanitized = re.sub(r"[^a-z0-9-]", "-", sanitized)
+    sanitized = re.sub(r"-+", "-", sanitized)
+    sanitized = sanitized.strip("-")
+    return sanitized[:60]
+
+
 def generate_email(config, unique_number, account_name):
     email_config = config["email"]
     prefix = email_config["prefix"]
     domain = email_config["domain"]
-    return f"{prefix}+rc-org-{unique_number}-{account_name}@{domain}"
+    safe_name = sanitize_account_name(account_name)
+    return f"{prefix}+rc-org-{unique_number}-{safe_name}@{domain}"
 
 
 def create_account(org_client, account_name, email, tags):
@@ -88,6 +98,7 @@ def validate_account_access(mgmt_session, account_id, role_name, max_attempts=6,
                 aws_access_key_id=response["Credentials"]["AccessKeyId"],
                 aws_secret_access_key=response["Credentials"]["SecretAccessKey"],
                 aws_session_token=response["Credentials"]["SessionToken"],
+                region_name=mgmt_session.region_name,
             )
             identity = temp_session.client("sts").get_caller_identity()
             print(f"  Validated access to account {account_id}: {identity['Arn']}", file=sys.stderr)

@@ -25,10 +25,10 @@ AWS Account Lifecycle Management — creates new member accounts in an AWS Organ
 make build
 
 # Preview what will happen (no changes made)
-make dry-run ACCOUNT_NAME=my-new-account AWS_PROFILE=mgmt
+make dry-run ACCOUNT_NAME=my-new-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation
 
 # Create a new account
-make create-account ACCOUNT_NAME=my-new-account AWS_PROFILE=mgmt
+make create-account ACCOUNT_NAME=my-new-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation
 ```
 
 ## Configuration

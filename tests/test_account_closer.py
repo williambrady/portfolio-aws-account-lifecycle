@@ -12,9 +12,7 @@ from src.account_closer import (
 class TestListMemberAccounts:
     def test_excludes_management_account(self):
         mock_client = MagicMock()
-        mock_client.describe_organization.return_value = {
-            "Organization": {"MasterAccountId": "111111111111"}
-        }
+        mock_client.describe_organization.return_value = {"Organization": {"ManagementAccountId": "111111111111"}}
         mock_paginator = MagicMock()
         mock_client.get_paginator.return_value = mock_paginator
         mock_paginator.paginate.return_value = [
@@ -34,9 +32,7 @@ class TestListMemberAccounts:
 
     def test_empty_org_returns_empty_list(self):
         mock_client = MagicMock()
-        mock_client.describe_organization.return_value = {
-            "Organization": {"MasterAccountId": "111111111111"}
-        }
+        mock_client.describe_organization.return_value = {"Organization": {"ManagementAccountId": "111111111111"}}
         mock_paginator = MagicMock()
         mock_client.get_paginator.return_value = mock_paginator
         mock_paginator.paginate.return_value = [
@@ -48,9 +44,7 @@ class TestListMemberAccounts:
 
     def test_multiple_pages(self):
         mock_client = MagicMock()
-        mock_client.describe_organization.return_value = {
-            "Organization": {"MasterAccountId": "111111111111"}
-        }
+        mock_client.describe_organization.return_value = {"Organization": {"ManagementAccountId": "111111111111"}}
         mock_paginator = MagicMock()
         mock_client.get_paginator.return_value = mock_paginator
         mock_paginator.paginate.return_value = [
@@ -83,9 +77,7 @@ class TestFindAccountByEmail:
         mock_client = MagicMock()
         mock_paginator = MagicMock()
         mock_client.get_paginator.return_value = mock_paginator
-        mock_paginator.paginate.return_value = [
-            {"Accounts": [{"Id": "222222222222", "Email": "other@example.com"}]}
-        ]
+        mock_paginator.paginate.return_value = [{"Accounts": [{"Id": "222222222222", "Email": "other@example.com"}]}]
 
         result = find_account_by_email(mock_client, "missing@example.com")
         assert result is None
@@ -113,9 +105,7 @@ class TestCloseAccount:
 class TestPollAccountClosure:
     def test_returns_immediately_when_suspended(self):
         mock_client = MagicMock()
-        mock_client.describe_account.return_value = {
-            "Account": {"Id": "222222222222", "Status": "SUSPENDED"}
-        }
+        mock_client.describe_account.return_value = {"Account": {"Id": "222222222222", "Status": "SUSPENDED"}}
 
         result = poll_account_closure(mock_client, "222222222222", max_attempts=3, interval=0)
         assert result == "SUSPENDED"
@@ -123,9 +113,7 @@ class TestPollAccountClosure:
 
     def test_returns_pending_closure(self):
         mock_client = MagicMock()
-        mock_client.describe_account.return_value = {
-            "Account": {"Id": "222222222222", "Status": "PENDING_CLOSURE"}
-        }
+        mock_client.describe_account.return_value = {"Account": {"Id": "222222222222", "Status": "PENDING_CLOSURE"}}
 
         result = poll_account_closure(mock_client, "222222222222", max_attempts=3, interval=0)
         assert result == "PENDING_CLOSURE"
@@ -147,9 +135,7 @@ class TestPollAccountClosure:
     @patch("src.account_closer.time.sleep")
     def test_returns_active_on_timeout(self, mock_sleep):
         mock_client = MagicMock()
-        mock_client.describe_account.return_value = {
-            "Account": {"Id": "222222222222", "Status": "ACTIVE"}
-        }
+        mock_client.describe_account.return_value = {"Account": {"Id": "222222222222", "Status": "ACTIVE"}}
 
         result = poll_account_closure(mock_client, "222222222222", max_attempts=2, interval=5)
         assert result == "ACTIVE"

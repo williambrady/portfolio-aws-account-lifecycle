@@ -7,7 +7,7 @@ def get_session(profile_name=None, role_arn=None, region_name=None, session_name
     if profile_name:
         return boto3.Session(profile_name=profile_name, region_name=region_name)
     if role_arn:
-        sts = boto3.client("sts")
+        sts = boto3.client("sts", region_name=region_name)
         response = sts.assume_role(RoleArn=role_arn, RoleSessionName=session_name)
         credentials = response["Credentials"]
         return boto3.Session(

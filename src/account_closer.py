@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 def list_member_accounts(org_client):
     org_info = org_client.describe_organization()["Organization"]
-    management_account_id = org_info["MasterAccountId"]
+    management_account_id = org_info.get("ManagementAccountId") or org_info["MasterAccountId"]
 
     accounts = []
     paginator = org_client.get_paginator("list_accounts")

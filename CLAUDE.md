@@ -12,13 +12,13 @@ AWS Account Lifecycle Management tool that creates new member accounts in an AWS
 ```bash
 make help                                              # Show available targets
 make build                                             # Build Docker image
-make create-account ACCOUNT_NAME=my-account AWS_PROFILE=mgmt  # Create account
-make dry-run ACCOUNT_NAME=my-account AWS_PROFILE=mgmt  # Show plan without changes
+make create-account ACCOUNT_NAME=my-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation  # Create account
+make dry-run ACCOUNT_NAME=my-account MGMT_PROFILE=mgmt AUTOMATION_PROFILE=automation  # Show plan without changes
 make close-account ACCOUNT_ID=123456789012 MGMT_PROFILE=mgmt  # Dry-run close (default)
 make close-account ACCOUNT_ID=123456789012 MGMT_PROFILE=mgmt APPROVE=true  # Actually close
 make close-all-accounts MGMT_PROFILE=mgmt              # Dry-run close all (default)
 make close-all-accounts MGMT_PROFILE=mgmt APPROVE=true # Actually close all
-make shell AWS_PROFILE=mgmt                            # Open interactive shell
+make shell MGMT_PROFILE=mgmt                           # Open interactive shell
 make clean                                             # Remove Docker image
 ```
 

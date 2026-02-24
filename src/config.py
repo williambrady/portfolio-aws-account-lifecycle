@@ -9,7 +9,7 @@ REQUIRED_FIELDS = [
 
 def load_config(config_path="config.yaml"):
     with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f) or {}
 
 
 def merge_cli_overrides(config, cli_args):

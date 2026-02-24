@@ -227,7 +227,11 @@ def _close_single_account(org_client, args, max_attempts, interval):
         return
 
     print(f"Phase 3: Closing account {account_id}...", file=sys.stderr)
-    close_account(org_client, account_id)
+    try:
+        close_account(org_client, account_id)
+    except Exception as e:
+        print(f"ERROR: Failed to close account {account_id}: {e}", file=sys.stderr)
+        sys.exit(1)
 
     if args.no_wait:
         print("  --no-wait specified, skipping polling", file=sys.stderr)
